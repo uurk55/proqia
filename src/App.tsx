@@ -23,7 +23,6 @@ import ComplaintList from './pages/ComplaintList.tsx';
 import ComplaintDetail from './pages/ComplaintDetail.tsx';
 import NewDevice from './pages/NewDevice.tsx';
 
-
 // 1. YENİ: Mantine'in v7 iskelet bileşenlerini import et
 import { AppShell } from '@mantine/core';
 
