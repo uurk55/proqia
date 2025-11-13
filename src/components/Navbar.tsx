@@ -1,99 +1,377 @@
-// src/components/Navbar.tsx (YENİ VE GELİŞTİRİLMİŞ HALİ)
+// src/components/Navbar.tsx
 
-import { Link, useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import { auth } from '../firebaseConfig';
-import { signOut } from 'firebase/auth';
+import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+import { auth } from "../firebaseConfig";
+import { signOut } from "firebase/auth";
 
-// 1. GÜNCELLEME: Mantine'den yeni bileşenler import ediyoruz
-import { Group, Button, Text, Anchor, Box, Divider, Title } from '@mantine/core';
-import { useMantineTheme } from '@mantine/core'; // Temamızın renklerine erişmek için
+import {
+  Group,
+  Button,
+  Text,
+  Anchor,
+  Box,
+  Divider,
+  Title,
+  Menu,
+  useMantineTheme,
+} from "@mantine/core";
+import { IconChevronDown } from "@tabler/icons-react";
 
 function Navbar() {
   const { currentUser, proqiaUser, permissions } = useAuth();
   const navigate = useNavigate();
-  
-  // 2. GÜNCELLEME: Temamızın renklerine erişmek için bir hook kullanıyoruz
   const theme = useMantineTheme();
 
   const handleLogout = async () => {
     try {
       await signOut(auth);
-      navigate('/login');
+      navigate("/login");
     } catch (err) {
       console.error("Çıkış yapılamadı:", err);
     }
   };
 
-  // 3. GÜNCELLEME: createLinkButton fonksiyonunu daha modern hale getiriyoruz
-  // Artık sadece Link değil, aktif sayfayı da vurgulayabiliriz (şimdilik sade tutalım)
-  const createLinkButton = (to: string, label: string) => (
-    <Button
-      component={Link}
-      to={to}
-      variant="subtle" // 'subtle' arka plansız, temiz bir görünüm verir
-      color="gray"    // Normalde gri, üzerine gelince tema rengi olacak
-      c={theme.colors.gray[7]} // Yazı rengini biraz daha belirgin yapalım
-    >
-      {label}
-    </Button>
-  );
+  const menuButtonProps: any = {
+    size: "sm",
+    variant: "subtle",
+    color: "gray",
+    radius: "xl",
+    px: "sm",
+    style: { fontWeight: 500 },
+  };
+
+  // Menülerin gösterilip gösterilmeyeceğini tek yerde hesaplayalım
+  const hasQualityMenu =
+    permissions?.doc_view_list ||
+    permissions?.doc_create ||
+    permissions?.dof_view_list ||
+    permissions?.dof_create ||
+    permissions?.audit_view_list ||
+    permissions?.audit_create ||
+    permissions?.complaint_view_list ||
+    permissions?.complaint_create;
+
+  const hasOperationMenu =
+    permissions?.device_view_list ||
+    permissions?.device_create ||
+    permissions?.training_view_list ||
+    permissions?.training_create;
+
+  const hasRiskIsgMenu =
+    permissions?.risk_view_list ||
+    permissions?.risk_create ||
+    permissions?.incident_view_list ||
+    permissions?.incident_create;
+
+  const hasPerformanceMenu =
+    permissions?.kpi_view_list || permissions?.kpi_create;
+
+  const hasAdminMenu =
+    permissions?.role_manage ||
+    permissions?.workflow_manage ||
+    permissions?.user_manage;
 
   return (
-    // 4. GÜNCELLEME: Ana Group bileşenini bir Box içine alarak daha iyi kontrol sağlıyoruz
-    <Box>
+    <Box
+      px="md"
+      py="xs"
+      style={{
+        borderBottom: "1px solid #eee",
+        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.04)",
+        position: "sticky",
+        top: 0,
+        zIndex: 100,
+        backgroundColor: "#fff",
+      }}
+    >
       <Group justify="space-between" h="100%">
-        
-        {/* Sol Taraf (Logo ve Navigasyon Linkleri) */}
-        <Group>
-          {/* 5. GÜNCELLEME: Logoyu daha belirgin hale getiriyoruz */}
-          <Anchor component={Link} to="/" underline="never">
-            <Title order={3} c={theme.primaryColor}>PROQIA</Title>
+        {/* Sol: Logo + menüler */}
+        <Group align="center" gap="lg">
+          <Anchor component={Link} to="/" underline="never" mr="lg">
+            <Title order={3} c={theme.primaryColor}>
+              PROQIA
+            </Title>
           </Anchor>
 
           {currentUser && proqiaUser && (
-            // 6. GÜNCELLEME: Logo ile linkler arasına ince bir ayırıcı (Divider) koyuyoruz
-            <Group gap="xs" ml="md">
+            <Group gap="xs">
               <Divider orientation="vertical" />
-              {permissions?.doc_view_list && createLinkButton("/documents", "Kütüphane")}
-              {permissions?.doc_create && createLinkButton("/documents/new", "Yeni Doküman")}
-              {permissions?.dof_create && createLinkButton("/dof/new", "Yeni DÖF")}
-              {permissions?.dof_view_list && createLinkButton("/dofs", "DÖF Listesi")}
-              {permissions?.audit_create && createLinkButton("/audit/new", "Yeni Denetim")}
-              {permissions?.audit_view_list && createLinkButton("/audits", "Denetim Listesi")}
-              {permissions?.complaint_create && createLinkButton("/complaint/new", "Yeni Şikayet")}
-              {permissions?.complaint_view_list && createLinkButton("/complaints", "Şikayet Listesi")}
-              {permissions?.device_create && createLinkButton("/device/new", "Yeni Cihaz")}
-              
-              {/* Admin linklerini ayırmak için */}
-              {(permissions?.role_manage || permissions?.workflow_manage) && (
+
+              {/* KALİTE */}
+              {hasQualityMenu && (
+                <Menu>
+                  <Menu.Target>
+                    <Button
+                      {...menuButtonProps}
+                      rightSection={<IconChevronDown size={14} />}
+                    >
+                      Kalite
+                    </Button>
+                  </Menu.Target>
+                  <Menu.Dropdown>
+                    {permissions?.doc_view_list ||
+                    permissions?.doc_create ? (
+                      <>
+                        <Menu.Label>Dokümanlar</Menu.Label>
+                        {permissions?.doc_view_list && (
+                          <Menu.Item component={Link} to="/documents">
+                            Kütüphane
+                          </Menu.Item>
+                        )}
+                        {permissions?.doc_create && (
+                          <Menu.Item component={Link} to="/documents/new">
+                            Yeni Doküman
+                          </Menu.Item>
+                        )}
+                        <Menu.Divider />
+                      </>
+                    ) : null}
+
+                    {permissions?.dof_view_list || permissions?.dof_create ? (
+                      <>
+                        <Menu.Label>DÖF</Menu.Label>
+                        {permissions?.dof_view_list && (
+                          <Menu.Item component={Link} to="/dofs">
+                            DÖF Listesi
+                          </Menu.Item>
+                        )}
+                        {permissions?.dof_create && (
+                          <Menu.Item component={Link} to="/dof/new">
+                            Yeni DÖF
+                          </Menu.Item>
+                        )}
+                        <Menu.Divider />
+                      </>
+                    ) : null}
+
+                    {permissions?.audit_view_list ||
+                    permissions?.audit_create ? (
+                      <>
+                        <Menu.Label>Denetim</Menu.Label>
+                        {permissions?.audit_view_list && (
+                          <Menu.Item component={Link} to="/audits">
+                            Denetim Listesi
+                          </Menu.Item>
+                        )}
+                        {permissions?.audit_create && (
+                          <Menu.Item component={Link} to="/audit/new">
+                            Yeni Denetim
+                          </Menu.Item>
+                        )}
+                        <Menu.Divider />
+                      </>
+                    ) : null}
+
+                    {permissions?.complaint_view_list ||
+                    permissions?.complaint_create ? (
+                      <>
+                        <Menu.Label>Şikayet</Menu.Label>
+                        {permissions?.complaint_view_list && (
+                          <Menu.Item component={Link} to="/complaints">
+                            Şikayet Listesi
+                          </Menu.Item>
+                        )}
+                        {permissions?.complaint_create && (
+                          <Menu.Item component={Link} to="/complaint/new">
+                            Yeni Şikayet
+                          </Menu.Item>
+                        )}
+                      </>
+                    ) : null}
+                  </Menu.Dropdown>
+                </Menu>
+              )}
+
+              {/* OPERASYON (Cihaz + Eğitim) */}
+              {hasOperationMenu && (
+                <Menu>
+                  <Menu.Target>
+                    <Button
+                      {...menuButtonProps}
+                      rightSection={<IconChevronDown size={14} />}
+                    >
+                      Operasyon
+                    </Button>
+                  </Menu.Target>
+                  <Menu.Dropdown>
+                    {permissions?.device_view_list ||
+                    permissions?.device_create ? (
+                      <>
+                        <Menu.Label>Cihazlar</Menu.Label>
+                        {permissions?.device_view_list && (
+                          <Menu.Item component={Link} to="/devices">
+                            Cihaz Listesi
+                          </Menu.Item>
+                        )}
+                        {permissions?.device_create && (
+                          <Menu.Item component={Link} to="/device/new">
+                            Yeni Cihaz
+                          </Menu.Item>
+                        )}
+                        <Menu.Divider />
+                      </>
+                    ) : null}
+
+                    {permissions?.training_view_list ||
+                    permissions?.training_create ? (
+                      <>
+                        <Menu.Label>Eğitimler</Menu.Label>
+                        {permissions?.training_view_list && (
+                          <Menu.Item component={Link} to="/trainings">
+                            Eğitim Listesi
+                          </Menu.Item>
+                        )}
+                        {permissions?.training_create && (
+                          <Menu.Item component={Link} to="/training/new">
+                            Yeni Eğitim
+                          </Menu.Item>
+                        )}
+                      </>
+                    ) : null}
+                  </Menu.Dropdown>
+                </Menu>
+              )}
+
+              {/* RİSK & İSG */}
+              {hasRiskIsgMenu && (
+                <Menu>
+                  <Menu.Target>
+                    <Button
+                      {...menuButtonProps}
+                      rightSection={<IconChevronDown size={14} />}
+                    >
+                      Risk & İSG
+                    </Button>
+                  </Menu.Target>
+                  <Menu.Dropdown>
+                    {permissions?.risk_view_list || permissions?.risk_create ? (
+                      <>
+                        <Menu.Label>Riskler</Menu.Label>
+                        {permissions?.risk_view_list && (
+                          <Menu.Item component={Link} to="/risks">
+                            Risk Listesi
+                          </Menu.Item>
+                        )}
+                        {permissions?.risk_create && (
+                          <Menu.Item component={Link} to="/risk/new">
+                            Yeni Risk
+                          </Menu.Item>
+                        )}
+                        <Menu.Divider />
+                      </>
+                    ) : null}
+
+                    {permissions?.incident_view_list ||
+                    permissions?.incident_create ? (
+                      <>
+                        <Menu.Label>İSG</Menu.Label>
+                        {permissions?.incident_view_list && (
+                          <Menu.Item component={Link} to="/incidents">
+                            İSG Kayıt Listesi
+                          </Menu.Item>
+                        )}
+                        {permissions?.incident_create && (
+                          <Menu.Item component={Link} to="/incident/new">
+                            Yeni İSG Kaydı
+                          </Menu.Item>
+                        )}
+                      </>
+                    ) : null}
+                  </Menu.Dropdown>
+                </Menu>
+              )}
+
+              {/* PERFORMANS */}
+              {hasPerformanceMenu && (
+                <Menu>
+                  <Menu.Target>
+                    <Button
+                      {...menuButtonProps}
+                      rightSection={<IconChevronDown size={14} />}
+                    >
+                      Performans
+                    </Button>
+                  </Menu.Target>
+                  <Menu.Dropdown>
+                    {permissions?.kpi_view_list && (
+                      <Menu.Item component={Link} to="/kpis">
+                        KPI Listesi
+                      </Menu.Item>
+                    )}
+                    {permissions?.kpi_create && (
+                      <Menu.Item component={Link} to="/kpi/new">
+                        Yeni KPI
+                      </Menu.Item>
+                    )}
+                  </Menu.Dropdown>
+                </Menu>
+              )}
+
+              {/* ADMIN */}
+              {hasAdminMenu && (
                 <>
                   <Divider orientation="vertical" />
-                  <Text size="sm" fw={500} c="dimmed">Admin:</Text>
-                  {permissions?.role_manage && createLinkButton("/admin/roles", "Roller")}
-                  {permissions?.workflow_manage && createLinkButton("/admin/workflows", "İş Akışları")}
+                  <Menu>
+                    <Menu.Target>
+                      <Button
+                        {...menuButtonProps}
+                        variant="light"
+                        color="dark"
+                        rightSection={<IconChevronDown size={14} />}
+                      >
+                        Admin
+                      </Button>
+                    </Menu.Target>
+                    <Menu.Dropdown>
+                      {permissions?.role_manage && (
+                        <Menu.Item component={Link} to="/admin/roles">
+                          Roller
+                        </Menu.Item>
+                      )}
+                      {permissions?.workflow_manage && (
+                        <Menu.Item component={Link} to="/admin/workflows">
+                          İş Akışları
+                        </Menu.Item>
+                      )}
+                      {permissions?.user_manage && (
+                        <Menu.Item component={Link} to="/admin/users">
+                          Kullanıcılar
+                        </Menu.Item>
+                      )}
+                    </Menu.Dropdown>
+                  </Menu>
                 </>
               )}
             </Group>
           )}
         </Group>
-        
-        {/* Sağ Taraf (Kullanıcı Bilgisi ve Çıkış) */}
+
+        {/* Sağ: kullanıcı bilgisi */}
         <Group>
           {currentUser && proqiaUser ? (
             <>
-              <Text size="sm" c="dimmed">Hoş geldin, <Text span fw={500} c="dark">{proqiaUser.full_name}</Text></Text>
-              <Button variant="light" color="red" size="sm" onClick={handleLogout}>
+              <Text size="sm" c="dimmed">
+                Hoş geldin,{" "}
+                <Text span fw={500} c="dark">
+                  {proqiaUser.full_name}
+                </Text>
+              </Text>
+              <Button
+                variant="light"
+                color="red"
+                size="sm"
+                onClick={handleLogout}
+              >
                 Çıkış Yap
               </Button>
             </>
           ) : (
             <Group>
-              {/* 7. GÜNCELLEME: Giriş ve Kayıt butonlarını daha standart hale getiriyoruz */}
               <Button component={Link} to="/login" variant="default" size="sm">
                 Giriş Yap
               </Button>
-              <Button component={Link} to="/signup" size="sm"> {/* primaryColor otomatik olarak atanır */}
+              <Button component={Link} to="/signup" size="sm">
                 Kayıt Ol
               </Button>
             </Group>

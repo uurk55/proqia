@@ -1,27 +1,39 @@
 // src/App.tsx
 import { Routes, Route } from 'react-router-dom';
-import Signup from './pages/Signup.tsx'; 
-import Login from './pages/Login.tsx';
-import Dashboard from './pages/Dashboard.tsx'; 
+import Signup from "./pages/auth/Signup";
+import Login from "./pages/auth/Login";
+import Dashboard from "./pages/dashboard/Dashboard";
 import ProtectedRoute from './components/ProtectedRoute.tsx';
 import AuthRoute from './components/AuthRoute.tsx'; 
 import Navbar from './components/Navbar.tsx';
-import RoleManager from './pages/RoleManager.tsx';
-import WorkflowManager from './pages/WorkflowManager.tsx';
-import DocumentUpload from './pages/DocumentUpload.tsx';
-import DocumentApproval from './pages/DocumentApproval.tsx';
-import DocumentList from './pages/DocumentList.tsx';
-import DocumentDetail from './pages/DocumentDetail.tsx';
-import NewDof from './pages/NewDof.tsx';
-import DofList from './pages/DofList.tsx';
-import DofDetail from './pages/DofDetail.tsx';
-import NewAudit from './pages/NewAudit.tsx';
-import AuditList from './pages/AuditList.tsx';
-import AuditDetail from './pages/AuditDetail.tsx';
-import NewComplaint from './pages/NewComplaint.tsx';
-import ComplaintList from './pages/ComplaintList.tsx';
-import ComplaintDetail from './pages/ComplaintDetail.tsx';
-import NewDevice from './pages/NewDevice.tsx';
+import RoleManager from './pages/admin/RoleManager.tsx';
+import WorkflowManager from './pages/admin/WorkflowManager.tsx';
+import DocumentUpload from './pages/documents/DocumentUpload.tsx';
+import DocumentApproval from './pages/documents/DocumentApproval.tsx';
+import DocumentList from './pages/documents/DocumentList.tsx';
+import DocumentDetail from './pages/documents/DocumentDetail.tsx';
+import NewDof from './pages/dof/NewDof.tsx';
+import DofList from './pages/dof/DofList.tsx';
+import DofDetail from './pages/dof/DofDetail.tsx';
+import NewAudit from './pages/audits/NewAudit.tsx';
+import AuditList from './pages/audits/AuditList.tsx';
+import AuditDetail from './pages/audits/AuditDetail.tsx';
+import NewComplaint from './pages/complaints/NewComplaint.tsx';
+import ComplaintList from './pages/complaints/ComplaintList.tsx';
+import ComplaintDetail from './pages/complaints/ComplaintDetail.tsx';
+import NewDevice from './pages/devices/NewDevice.tsx';
+import DevicesList from "./pages/devices/DevicesList.tsx";
+import NewKPI from "./pages/kpi/NewKPI.tsx";
+import KPIList from "./pages/kpi/KPIList.tsx";
+import NewRisk from "./pages/risks/NewRisk.tsx";
+import RiskList from "./pages/risks/RiskList.tsx";
+import NewTraining from "./pages/trainings/NewTraining.tsx";
+import TrainingList from "./pages/trainings/TrainingList.tsx";
+import NewIncident from "./pages/incidents/NewIncident.tsx";
+import IncidentList from "./pages/incidents/IncidentList.tsx";
+
+
+
 
 // 1. YENİ: Mantine'in v7 iskelet bileşenlerini import et
 import { AppShell } from '@mantine/core';
@@ -95,10 +107,14 @@ function App() {
             element={ <ProtectedRoute> <DofList /> </ProtectedRoute> }
           />
 
-          <Route 
-            path="/dof/:dofId" 
-            element={<ProtectedRoute><DofDetail /></ProtectedRoute>} 
-          />
+          <Route
+            path="/dof/:id"
+            element={
+          <ProtectedRoute>
+          <DofDetail />
+         </ProtectedRoute>
+            }
+            />
 
 
           {/* GÖREV ROTASI */}
@@ -144,6 +160,83 @@ function App() {
               path="/device/new" 
               element={ <ProtectedRoute> <NewDevice /> </ProtectedRoute> }
             />
+
+            <Route 
+              path="/devices" 
+              element={<DevicesList />} />
+
+            {/* KPI ROTALARI */}
+            <Route
+  path="/kpi/new"
+  element={
+    <ProtectedRoute>
+      <NewKPI />
+    </ProtectedRoute>
+  }
+/>
+<Route
+  path="/kpis"
+  element={
+    <ProtectedRoute>
+      <KPIList />
+    </ProtectedRoute>
+  }
+/>
+
+            {/* RİSK YÖNETİMİ ROTALARI */}
+             <Route
+  path="/risk/new"
+  element={
+    <ProtectedRoute>
+      <NewRisk />
+    </ProtectedRoute>
+  }
+/>
+<Route
+  path="/risks"
+  element={
+    <ProtectedRoute>
+      <RiskList />
+    </ProtectedRoute>
+  }
+/>
+            {/* EĞİTİM YÖNETİMİ ROTALARI */}
+            <Route
+  path="/training/new"
+  element={
+    <ProtectedRoute>
+      <NewTraining />
+    </ProtectedRoute>
+  }
+/>
+<Route
+  path="/trainings"
+  element={
+    <ProtectedRoute>
+      <TrainingList />
+    </ProtectedRoute>
+  }
+/>
+
+            {/* OLAY YÖNETİMİ ROTALARI */}
+            <Route
+  path="/incident/new"
+  element={
+    <ProtectedRoute>
+      <NewIncident />
+    </ProtectedRoute>
+  }
+/>
+<Route
+  path="/incidents"
+  element={
+    <ProtectedRoute>
+      <IncidentList />
+    </ProtectedRoute>
+  }
+/>
+
+
 
 
 

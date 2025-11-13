@@ -1,8 +1,8 @@
 // src/pages/DocumentList.tsx (YENİ VE MODERN ARAYÜZ)
 
 import { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { db } from '../firebaseConfig';
+import { useAuth } from '../../context/AuthContext';
+import { db } from '../../firebaseConfig';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import type { DocumentData } from 'firebase/firestore'; 
 import { Link } from 'react-router-dom'; 

@@ -2,8 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import { db } from '../firebaseConfig';
+import { useAuth } from '../../context/AuthContext';
+import { db } from '../../firebaseConfig';
 import { doc, getDoc } from 'firebase/firestore';
 import type { DocumentData } from 'firebase/firestore';
 

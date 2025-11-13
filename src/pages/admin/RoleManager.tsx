@@ -1,9 +1,9 @@
 // src/pages/RoleManager.tsx (YENİ VE CİLALANMIŞ HALİ)
 
 import { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
-import type { ProqiaPermissions } from '../context/AuthContext';
-import { db } from '../firebaseConfig';
+import { useAuth } from '../../context/AuthContext';
+import type { ProqiaPermissions } from '../../context/AuthContext';
+import { db } from '../../firebaseConfig';
 import { collection, query, where, getDocs, doc, setDoc, Timestamp } from 'firebase/firestore';
 
 // 1. GÜNCELLEME: Yeni Mantine bileşenlerini ve bildirim sistemini import ediyoruz

@@ -1,8 +1,8 @@
 // src/pages/ComplaintList.tsx
 
 import { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { db } from '../firebaseConfig';
+import { useAuth } from '../../context/AuthContext';
+import { db } from '../../firebaseConfig';
 import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
 import type { DocumentData } from 'firebase/firestore'; 
 import { Link } from 'react-router-dom'; 

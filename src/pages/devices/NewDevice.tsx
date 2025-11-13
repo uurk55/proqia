@@ -1,8 +1,8 @@
 // src/pages/NewDevice.tsx
 
 import { useState } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { db } from '../firebaseConfig'; 
+import { useAuth } from '../../context/AuthContext';
+import { db } from '../../firebaseConfig'; 
 import { collection, addDoc, Timestamp } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom'; 
 

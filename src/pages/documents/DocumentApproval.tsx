@@ -2,9 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import { db } from '../firebaseConfig';
-import { doc, getDoc, updateDoc, Timestamp, arrayUnion, addDoc, collection, runTransaction } from 'firebase/firestore'; // runTransaction eklendi
+import { useAuth } from '../../context/AuthContext';
+import { db } from '../../firebaseConfig';
+import { doc, getDoc, updateDoc, Timestamp, arrayUnion, addDoc, collection } from 'firebase/firestore'; // runTransaction eklendi
 import type { DocumentData } from 'firebase/firestore';
 
 // 1. GÜNCELLEME: Gerekli Mantine bileşenlerini ve bildirim sistemini import ediyoruz

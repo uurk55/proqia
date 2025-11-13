@@ -1,8 +1,8 @@
 // src/pages/DocumentUpload.tsx (YENİ VE CİLALANMIŞ HALİ)
 
 import { useState, useEffect } from 'react';
-import { useAuth } from '../context/AuthContext';
-import { db, storage } from '../firebaseConfig'; 
+import { useAuth } from '../../context/AuthContext';
+import { db, storage } from '../../firebaseConfig'; 
 import { collection, query, where, getDocs, doc, setDoc, Timestamp, addDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useNavigate } from 'react-router-dom'; 
