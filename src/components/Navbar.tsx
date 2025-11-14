@@ -339,6 +339,13 @@ function Navbar() {
                           Kullanıcılar
                         </Menu.Item>
                       )}
+{proqiaUser?.role_id === 'admin' && (
+  <Menu.Item component={Link} to="/admin/company">
+    Şirket Ayarları
+  </Menu.Item>
+)}
+
+
                     </Menu.Dropdown>
                   </Menu>
                 </>

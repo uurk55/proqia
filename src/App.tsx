@@ -25,14 +25,18 @@ import NewDevice from './pages/devices/NewDevice.tsx';
 import DevicesList from "./pages/devices/DevicesList.tsx";
 import NewKPI from "./pages/kpi/NewKPI.tsx";
 import KPIList from "./pages/kpi/KPIList.tsx";
+import KPIDetail from "./pages/kpi/KPIDetail.tsx"; // üstte importlara ekle
 import NewRisk from "./pages/risks/NewRisk.tsx";
 import RiskList from "./pages/risks/RiskList.tsx";
 import NewTraining from "./pages/trainings/NewTraining.tsx";
 import TrainingList from "./pages/trainings/TrainingList.tsx";
 import NewIncident from "./pages/incidents/NewIncident.tsx";
 import IncidentList from "./pages/incidents/IncidentList.tsx";
-
-
+import RiskDetail from "./pages/risks/RiskDetail.tsx";
+import IncidentDetail from "./pages/incidents/IncidentDetail.tsx";
+import TrainingDetail from "./pages/trainings/TrainingDetail.tsx";
+import UserManager from "./pages/admin/UserManager.tsx";
+import CompanySettings from "./pages/admin/CompanySettings.tsx";
 
 
 // 1. YENİ: Mantine'in v7 iskelet bileşenlerini import et
@@ -81,6 +85,21 @@ function App() {
             path="/admin/workflows" 
             element={ <ProtectedRoute> <WorkflowManager /> </ProtectedRoute> }
           />
+
+          <Route
+            path="/admin/users"
+            element={ <ProtectedRoute> <UserManager /> </ProtectedRoute> }
+          />
+
+          <Route
+  path="/admin/company"
+  element={
+    <ProtectedRoute>
+      <CompanySettings />
+    </ProtectedRoute>
+  }
+/>
+
 
           {/* DMS ROTALARI */}
           <Route 
@@ -183,6 +202,16 @@ function App() {
   }
 />
 
+<Route
+  path="/kpi/:kpiId"
+  element={
+    <ProtectedRoute>
+      <KPIDetail />
+    </ProtectedRoute>
+  }
+/>
+
+
             {/* RİSK YÖNETİMİ ROTALARI */}
              <Route
   path="/risk/new"
@@ -200,6 +229,16 @@ function App() {
     </ProtectedRoute>
   }
 />
+
+              <Route
+  path="/risk/:riskId"
+  element={
+    <ProtectedRoute>
+      <RiskDetail />
+    </ProtectedRoute>
+  }
+/>
+
             {/* EĞİTİM YÖNETİMİ ROTALARI */}
             <Route
   path="/training/new"
@@ -214,6 +253,15 @@ function App() {
   element={
     <ProtectedRoute>
       <TrainingList />
+    </ProtectedRoute>
+  }
+/>
+
+<Route
+  path="/training/:trainingId"
+  element={
+    <ProtectedRoute>
+      <TrainingDetail />
     </ProtectedRoute>
   }
 />
@@ -236,9 +284,14 @@ function App() {
   }
 />
 
-
-
-
+<Route
+  path="/incident/:incidentId"
+  element={
+    <ProtectedRoute>
+      <IncidentDetail />
+    </ProtectedRoute>
+  }
+/>
 
 
         </Routes>

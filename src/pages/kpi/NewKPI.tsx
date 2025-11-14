@@ -1,8 +1,14 @@
-// src/pages/NewKPI.tsx
+// src/pages/kpi/NewKPI.tsx
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { collection, addDoc, Timestamp } from "firebase/firestore";
+import {
+  collection,
+  addDoc,
+  Timestamp,
+  doc,
+  getDoc,
+} from "firebase/firestore";
 import { db } from "../../firebaseConfig";
 import { useAuth } from "../../context/AuthContext";
 
@@ -17,9 +23,44 @@ import {
   NumberInput,
   Select,
   Button,
+  Group,
+  Alert,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconCheck, IconAlertCircle } from "@tabler/icons-react";
+
+type GroupInputsProps = {
+  unit: string;
+  setUnit: (v: string) => void;
+  targetValue: number | string;
+  setTargetValue: (v: number | string) => void;
+};
+
+function GroupInputs({
+  unit,
+  setUnit,
+  targetValue,
+  setTargetValue,
+}: GroupInputsProps) {
+  return (
+    <Group grow align="flex-end">
+      <NumberInput
+        required
+        label="Hedef Değer"
+        placeholder="Örn: 95"
+        value={targetValue}
+        onChange={setTargetValue}
+        min={0}
+      />
+      <Select
+        label="Birim"
+        data={["%", "adet", "kWh", "saat", "ppm"]}
+        value={unit}
+        onChange={(v) => v && setUnit(v)}
+      />
+    </Group>
+  );
+}
 
 function NewKPI() {
   const { proqiaUser, currentUser } = useAuth();
@@ -32,13 +73,56 @@ function NewKPI() {
   const [unit, setUnit] = useState("%");
   const [targetValue, setTargetValue] = useState<number | string>(0);
   const [period, setPeriod] = useState<string | null>("Aylık");
-  const [department, setDepartment] = useState("");
+  const [department, setDepartment] = useState<string | null>(null);
+
+  // Departmanlar şirket ayarlarından
+  const [departments, setDepartments] = useState<string[]>([]);
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [settingsError, setSettingsError] = useState("");
+
+  useEffect(() => {
+    const loadSettings = async () => {
+      if (!proqiaUser) {
+        setSettingsLoading(false);
+        return;
+      }
+
+      setSettingsLoading(true);
+      setSettingsError("");
+      try {
+        const ref = doc(db, "company_settings", proqiaUser.company_id);
+        const snap = await getDoc(ref);
+
+        if (snap.exists()) {
+          const data = snap.data() as any;
+          setDepartments(Array.isArray(data.departments) ? data.departments : []);
+        } else {
+          setDepartments([]);
+        }
+      } catch (err) {
+        console.error("Şirket ayarları (departman) alınamadı:", err);
+        setSettingsError(
+          "Departman listesi yüklenirken bir hata oluştu. Yine de metin girişi yapabilirsiniz."
+        );
+      } finally {
+        setSettingsLoading(false);
+      }
+    };
+
+    loadSettings();
+  }, [proqiaUser]);
 
   const handleCreateKPI = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!proqiaUser || !currentUser) return;
 
-    if (!name.trim() || !unit || !period || !department.trim()) {
+    if (!name.trim() || !unit || !period || !(department || "").trim()) {
+      notifications.show({
+        title: "Eksik bilgi",
+        message: "Hedef adı, birim, periyot ve departman zorunludur.",
+        color: "red",
+        icon: <IconAlertCircle />,
+      });
       return;
     }
 
@@ -51,8 +135,14 @@ function NewKPI() {
         unit,
         target_value: Number(targetValue),
         period, // "Aylık" | "Yıllık"
-        department: department.trim(),
+        department: (department || "").trim(),
         responsible_user: currentUser.uid,
+
+        // DURUM / GERÇEKLEŞEN İÇİN ALANLAR
+        status: "Takipte", // varsayılan KPI durumu
+        current_value: null,
+        last_update_at: null,
+
         created_at: Timestamp.now(),
       });
 
@@ -63,7 +153,7 @@ function NewKPI() {
         icon: <IconCheck />,
       });
 
-      navigate("/kpis"); // KPI listesi sayfasını sonra yapacağız
+      navigate("/kpis");
     } catch (error) {
       console.error("KPI oluşturma hatası:", error);
       notifications.show({
@@ -78,7 +168,7 @@ function NewKPI() {
   };
 
   const isFormInvalid =
-    !name.trim() || !unit || !period || !department.trim() || targetValue === "";
+    !name.trim() || !unit || !period || !(department || "").trim() || targetValue === "";
 
   return (
     <Box maw={800} mx="auto">
@@ -88,6 +178,17 @@ function NewKPI() {
       <Text c="dimmed" mb="lg">
         Süreç performansını takip etmek için yeni bir KPI tanımlayın.
       </Text>
+
+      {settingsError && (
+        <Alert
+          icon={<IconAlertCircle size={18} />}
+          title="Departman bilgisi"
+          color="yellow"
+          mb="sm"
+        >
+          {settingsError}
+        </Alert>
+      )}
 
       <Paper withBorder shadow="sm" p="lg" radius="md">
         <form onSubmit={handleCreateKPI}>
@@ -124,17 +225,36 @@ function NewKPI() {
               onChange={setPeriod}
             />
 
-            <TextInput
-              required
-              label="Sorumlu Departman"
-              placeholder="Örn: Kalite, Üretim, Satış"
-              value={department}
-              onChange={(e) => setDepartment(e.target.value)}
-            />
+            {departments.length > 0 ? (
+              <Select
+                required
+                label="Sorumlu Departman"
+                placeholder={
+                  settingsLoading
+                    ? "Departmanlar yükleniyor..."
+                    : "Departman seçin"
+                }
+                data={departments}
+                searchable
+                nothingFoundMessage={
+                  settingsLoading ? "Yükleniyor..." : "Departman tanımlı değil"
+                }
+                value={department}
+                onChange={(val) => setDepartment(val ?? "")}
+              />
+            ) : (
+              <TextInput
+                required
+                label="Sorumlu Departman"
+                placeholder="Örn: Kalite, Üretim, Satış"
+                value={department || ""}
+                onChange={(e) => setDepartment(e.target.value)}
+              />
+            )}
 
             <Button
               type="submit"
-              loading={isSubmitting}
+              loading={isFormInvalid || isSubmitting}
               disabled={isFormInvalid || isSubmitting}
               size="md"
               mt="md"
@@ -145,42 +265,6 @@ function NewKPI() {
         </form>
       </Paper>
     </Box>
-  );
-}
-
-// Küçük alt bileşen: hedef değeri + birim aynı satırda
-import { Group } from "@mantine/core";
-
-type GroupInputsProps = {
-  unit: string;
-  setUnit: (v: string) => void;
-  targetValue: number | string;
-  setTargetValue: (v: number | string) => void;
-};
-
-function GroupInputs({
-  unit,
-  setUnit,
-  targetValue,
-  setTargetValue,
-}: GroupInputsProps) {
-  return (
-    <Group grow align="flex-end">
-      <NumberInput
-        required
-        label="Hedef Değer"
-        placeholder="Örn: 95"
-        value={targetValue}
-        onChange={setTargetValue}
-        min={0}
-      />
-      <Select
-        label="Birim"
-        data={["%", "adet", "kWh", "saat", "ppm"]}
-        value={unit}
-        onChange={(v) => v && setUnit(v)}
-      />
-    </Group>
   );
 }
 

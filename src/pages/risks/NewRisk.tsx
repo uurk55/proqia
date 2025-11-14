@@ -1,8 +1,15 @@
-// src/pages/NewRisk.tsx
+// src/pages/risks/NewRisk.tsx
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { collection, addDoc, Timestamp } from "firebase/firestore";
+import {
+  collection,
+  addDoc,
+  Timestamp,
+  getDocs,
+  query,
+  where,
+} from "firebase/firestore";
 import { db } from "../../firebaseConfig";
 import { useAuth } from "../../context/AuthContext";
 
@@ -18,9 +25,18 @@ import {
   Select,
   Button,
   Group,
+  Alert,
+  Center,
+  Loader,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconCheck, IconAlertCircle } from "@tabler/icons-react";
+
+type Department = {
+  id: string;
+  name: string;
+  is_active: boolean;
+};
 
 function NewRisk() {
   const { proqiaUser, currentUser } = useAuth();
@@ -31,9 +47,71 @@ function NewRisk() {
   const [name, setName] = useState("");
   const [riskType, setRiskType] = useState<string | null>("Süreç Riski");
   const [description, setDescription] = useState("");
-  const [department, setDepartment] = useState("");
+  const [department, setDepartment] = useState<string | null>(null);
   const [probability, setProbability] = useState<number | string>(3);
   const [impact, setImpact] = useState<number | string>(3);
+
+  // Departmanlar
+  const [deptOptions, setDeptOptions] = useState<
+    { value: string; label: string }[]
+  >([]);
+  const [deptLoading, setDeptLoading] = useState(true);
+  const [deptError, setDeptError] = useState("");
+
+  // Şirket / kullanıcı yoksa
+  if (!proqiaUser || !currentUser) {
+    return (
+      <Center style={{ padding: 40 }}>
+        <Loader size="lg" />
+      </Center>
+    );
+  }
+
+  // Departmanları Firestore'dan çek
+  useEffect(() => {
+    const fetchDepartments = async () => {
+      if (!proqiaUser) return;
+      setDeptLoading(true);
+      setDeptError("");
+
+      try {
+        const snap = await getDocs(
+          query(
+            collection(db, "departments"),
+            where("company_id", "==", proqiaUser.company_id),
+            where("is_active", "==", true)
+          )
+        );
+
+        const list: Department[] = snap.docs.map((d) => {
+          const data = d.data() as any;
+          return {
+            id: d.id,
+            name: data.name ?? "",
+            is_active: data.is_active ?? true,
+          };
+        });
+
+        list.sort((a, b) => a.name.localeCompare(b.name));
+
+        setDeptOptions(
+          list.map((d) => ({
+            value: d.name,
+            label: d.name,
+          }))
+        );
+
+        // Eğer hiç departman yoksa, uyarı göstereceğiz (UI'da)
+      } catch (err) {
+        console.error("Departman listesi alınamadı:", err);
+        setDeptError("Departmanlar alınırken bir hata oluştu.");
+      } finally {
+        setDeptLoading(false);
+      }
+    };
+
+    fetchDepartments();
+  }, [proqiaUser]);
 
   const handleCreateRisk = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,7 +120,7 @@ function NewRisk() {
     if (
       !name.trim() ||
       !riskType ||
-      !department.trim() ||
+      !department ||
       probability === "" ||
       impact === ""
     ) {
@@ -60,11 +138,11 @@ function NewRisk() {
         name: name.trim(),
         type: riskType,
         description: description.trim(),
-        department: department.trim(),
+        department: department, // Select'ten gelen ad
         probability: prob,
         impact: imp,
         risk_score: riskScore,
-        status: "Açık", // Açık / Kapalı / İzlemede gibi
+        status: "Açık", // Açık / Kapalı / İzlemede
         created_by: currentUser.uid,
         created_at: Timestamp.now(),
       });
@@ -93,7 +171,7 @@ function NewRisk() {
   const isFormInvalid =
     !name.trim() ||
     !riskType ||
-    !department.trim() ||
+    !department ||
     probability === "" ||
     impact === "";
 
@@ -105,6 +183,18 @@ function NewRisk() {
       <Text c="dimmed" mb="lg">
         Süreç, çevre, İSG veya enerji ile ilgili yeni bir risk tanımlayın.
       </Text>
+
+      {/* Departmanlar alınırken hata varsa göster */}
+      {deptError && (
+        <Alert
+          icon={<IconAlertCircle size={18} />}
+          title="Departmanlar yüklenemedi"
+          color="red"
+          mb="md"
+        >
+          {deptError}
+        </Alert>
+      )}
 
       <Paper withBorder shadow="sm" p="lg" radius="md">
         <form onSubmit={handleCreateRisk}>
@@ -139,12 +229,22 @@ function NewRisk() {
               onChange={(e) => setDescription(e.target.value)}
             />
 
-            <TextInput
-              required
+            <Select
               label="İlgili Departman / Süreç"
-              placeholder="Örn: Pres, Boyahane, Eloksal, Satış"
+              required
+              placeholder={
+                deptLoading
+                  ? "Departmanlar yükleniyor..."
+                  : deptOptions.length === 0
+                  ? "Henüz departman tanımlanmamış. Şirket Ayarları'ndan ekleyin."
+                  : "Bir departman seçin"
+              }
+              data={deptOptions}
               value={department}
-              onChange={(e) => setDepartment(e.target.value)}
+              onChange={setDepartment}
+              searchable
+              nothingFoundMessage="Uyan departman bulunamadı"
+              disabled={deptLoading || deptOptions.length === 0}
             />
 
             <Group grow align="flex-end">
@@ -169,7 +269,9 @@ function NewRisk() {
             <Button
               type="submit"
               loading={isSubmitting}
-              disabled={isFormInvalid || isSubmitting}
+              disabled={
+                isFormInvalid || isSubmitting || deptOptions.length === 0
+              }
               size="md"
               mt="md"
             >
