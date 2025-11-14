@@ -59,7 +59,7 @@ const getStatusColor = (status: string) => {
 
 function TrainingDetail() {
   const { trainingId } = useParams<{ trainingId: string }>();
-  const { proqiaUser, permissions } = useAuth();
+  const { proqiaUser } = useAuth();
   const navigate = useNavigate();
 
   const [training, setTraining] = useState<Training | null>(null);
@@ -178,7 +178,11 @@ function TrainingDetail() {
         >
           {error}
         </Alert>
-        <Button mt="md" variant="default" onClick={() => navigate("/trainings")}>
+        <Button
+          mt="md"
+          variant="default"
+          onClick={() => navigate("/trainings")}
+        >
           Eğitim Listesine Dön
         </Button>
       </Box>
@@ -196,7 +200,11 @@ function TrainingDetail() {
         >
           Görüntülenecek eğitim kaydı bulunamadı.
         </Alert>
-        <Button mt="md" variant="default" onClick={() => navigate("/trainings")}>
+        <Button
+          mt="md"
+          variant="default"
+          onClick={() => navigate("/trainings")}
+        >
           Eğitim Listesine Dön
         </Button>
       </Box>
@@ -287,7 +295,6 @@ function TrainingDetail() {
           <Divider />
 
           <Group justify="space-between" mt="sm">
-            {/* Durum güncelleme: şimdilik her zaman göster */}
             <Group>
               <Select
                 label="Durumu Güncelle"
@@ -305,10 +312,7 @@ function TrainingDetail() {
               </Button>
             </Group>
 
-            <Button
-              variant="default"
-              onClick={() => navigate("/trainings")}
-            >
+            <Button variant="default" onClick={() => navigate("/trainings")}>
               Eğitim Listesine Dön
             </Button>
           </Group>
