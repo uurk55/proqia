@@ -1,14 +1,15 @@
-// src/pages/incidents/NewIncident.tsx
+// src/pages/admin/CompanySettings.tsx
 
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import {
   collection,
-  addDoc,
-  Timestamp,
   getDocs,
+  addDoc,
+  updateDoc,
+  doc,
   query,
   where,
+  Timestamp,
 } from "firebase/firestore";
 import { db } from "../../firebaseConfig";
 import { useAuth } from "../../context/AuthContext";
@@ -17,373 +18,534 @@ import {
   Box,
   Title,
   Text,
+  Tabs,
   Paper,
-  Stack,
-  TextInput,
-  Textarea,
-  Select,
-  Button,
   Group,
-  NumberInput,
+  Table,
+  TextInput,
+  Switch,
+  Button,
+  Loader,
+  Center,
+  Alert,
+  Badge,
+  Stack,
 } from "@mantine/core";
-import { DateInput } from "@mantine/dates";
-import "dayjs/locale/tr";
+import {
+  IconAlertCircle,
+  IconBuildingFactory,
+  IconMapPin,
+} from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
-import { IconCheck, IconAlertCircle, IconCalendar } from "@tabler/icons-react";
 
-function NewIncident() {
-  const { proqiaUser, currentUser } = useAuth();
-  const navigate = useNavigate();
+type Department = {
+  id: string;
+  name: string;
+  code?: string;
+  is_active: boolean;
+  company_id: string;
+  created_at?: Timestamp | Date | null;
+};
 
-  const [isSubmitting, setIsSubmitting] = useState(false);
+type Location = {
+  id: string;
+  name: string;
+  code?: string;
+  is_active: boolean;
+  company_id: string;
+  created_at?: Timestamp | Date | null;
+};
 
-  // Temel alanlar
-  const [type, setType] = useState<string | null>("İş Kazası");
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [location, setLocation] = useState("");
-  const [department, setDepartment] = useState("");
-  const [eventDate, setEventDate] = useState<Date | null>(new Date());
-  const [injurySeverity, setInjurySeverity] = useState<string | null>("Yok"); // Yok / Hafif / Ciddi
+const toJsDate = (value?: Timestamp | Date | null): Date | undefined => {
+  if (!value) return undefined;
+  // @ts-expect-error: Firestore Timestamp olabilir
+  return typeof value.toDate === "function" ? value.toDate() : value;
+};
 
-  // Yeni ek alanlar
-  const [shift, setShift] = useState<string | null>("Vardiya Belirtilmedi");
-  const [injuredPerson, setInjuredPerson] = useState("");
-  const [immediateAction, setImmediateAction] = useState("");
-  const [rootCause, setRootCause] = useState("");
-  const [severity, setSeverity] = useState<number | string>(3); // 1–5 İSG şiddeti
-  const [status, setStatus] = useState<string | null>("Açık"); // Açık / İncelemede / Kapalı
+function CompanySettings() {
+  const { proqiaUser } = useAuth();
 
-  // Şirket ayarlarından gelen listeler
-  const [departmentOptions, setDepartmentOptions] = useState<string[]>([]);
-  const [locationOptions, setLocationOptions] = useState<string[]>([]);
-  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  // Departman / Lokasyonları Firestore'dan çek (departments & locations koleksiyonları)
-  useEffect(() => {
-    const loadSettings = async () => {
-      if (!proqiaUser) {
-        setSettingsLoading(false);
-        return;
-      }
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [locations, setLocations] = useState<Location[]>([]);
 
-      setSettingsLoading(true);
+  const [newDeptName, setNewDeptName] = useState("");
+  const [newDeptCode, setNewDeptCode] = useState("");
+  const [savingDept, setSavingDept] = useState(false);
 
-      try {
-        // Departmanlar (sadece aktif)
-        const deptSnap = await getDocs(
-          query(
-            collection(db, "departments"),
-            where("company_id", "==", proqiaUser.company_id),
-            where("is_active", "==", true)
-          )
-        );
+  const [newLocName, setNewLocName] = useState("");
+  const [newLocCode, setNewLocCode] = useState("");
+  const [savingLoc, setSavingLoc] = useState(false);
 
-        const deptNames = deptSnap.docs
-          .map((d) => {
-            const data = d.data() as any;
-            return data.name as string | undefined;
-          })
-          .filter((name): name is string => !!name)
-          .sort((a, b) => a.localeCompare(b, "tr"));
+  // -------- Yetki kontrolü --------
+  if (proqiaUser && proqiaUser.role_id !== "admin") {
+    return (
+      <Box maw={900} mx="auto">
+        <Alert
+          icon={<IconAlertCircle size={18} />}
+          title="Erişim yok"
+          color="yellow"
+          mt="md"
+        >
+          Bu sayfayı yalnızca şirket admini görüntüleyebilir.
+        </Alert>
+      </Box>
+    );
+  }
 
-        setDepartmentOptions(deptNames);
-
-        // Lokasyonlar (sadece aktif)
-        const locSnap = await getDocs(
-          query(
-            collection(db, "locations"),
-            where("company_id", "==", proqiaUser.company_id),
-            where("is_active", "==", true)
-          )
-        );
-
-        const locNames = locSnap.docs
-          .map((d) => {
-            const data = d.data() as any;
-            return data.name as string | undefined;
-          })
-          .filter((name): name is string => !!name)
-          .sort((a, b) => a.localeCompare(b, "tr"));
-
-        setLocationOptions(locNames);
-      } catch (err) {
-        console.error("Departman / lokasyon listesi yüklenemedi:", err);
-      } finally {
-        setSettingsLoading(false);
-      }
-    };
-
-    loadSettings();
-  }, [proqiaUser]);
-
-  const handleCreateIncident = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!proqiaUser || !currentUser) return;
-
-    if (
-      !type ||
-      !title.trim() ||
-      !description.trim() ||
-      !location.trim() ||
-      !department.trim() ||
-      !eventDate
-    ) {
-      notifications.show({
-        title: "Eksik bilgi",
-        message:
-          "Tür, başlık, açıklama, lokasyon, departman ve tarih zorunludur.",
-        color: "red",
-        icon: <IconAlertCircle />,
-      });
+  // -------- Verileri yükle --------
+  const fetchData = async () => {
+    if (!proqiaUser) {
+      setLoading(false);
       return;
     }
 
-    const severityValue = severity === "" ? 0 : Number(severity);
+    setLoading(true);
+    setError("");
 
-    setIsSubmitting(true);
     try {
-      await addDoc(collection(db, "incidents"), {
-        company_id: proqiaUser.company_id,
-        type, // İş Kazası / Ramak Kala / Tehlike Bildirimi
-        title: title.trim(),
-        description: description.trim(),
-        location: location.trim(),
-        department: department.trim(),
-        event_date: Timestamp.fromDate(eventDate),
-        injury_severity: injurySeverity,
+      // Departmanlar
+      const deptSnap = await getDocs(
+        query(
+          collection(db, "departments"),
+          where("company_id", "==", proqiaUser.company_id)
+        )
+      );
 
-        // Yeni alanlar
-        shift: shift || "Vardiya Belirtilmedi",
-        injured_person: injuredPerson.trim(),
-        immediate_action: immediateAction.trim(),
-        root_cause: rootCause.trim(),
-        severity: severityValue,
-
-        status: status || "Açık",
-        created_by: currentUser.uid,
-        created_at: Timestamp.now(),
+      const deptList: Department[] = deptSnap.docs.map((d) => {
+        const data = d.data() as any;
+        return {
+          id: d.id,
+          name: data.name ?? "",
+          code: data.code ?? "",
+          is_active: data.is_active ?? true,
+          company_id: data.company_id ?? "",
+          created_at: data.created_at ?? null,
+        };
       });
 
-      notifications.show({
-        title: "Başarılı!",
-        message: "Yeni İSG kaydı oluşturuldu.",
-        color: "teal",
-        icon: <IconCheck />,
+      deptList.sort((a, b) => a.name.localeCompare(b.name));
+
+      // Lokasyonlar
+      const locSnap = await getDocs(
+        query(
+          collection(db, "locations"),
+          where("company_id", "==", proqiaUser.company_id)
+        )
+      );
+
+      const locList: Location[] = locSnap.docs.map((d) => {
+        const data = d.data() as any;
+        return {
+          id: d.id,
+          name: data.name ?? "",
+          code: data.code ?? "",
+          is_active: data.is_active ?? true,
+          company_id: data.company_id ?? "",
+          created_at: data.created_at ?? null,
+        };
       });
 
-      navigate("/incidents");
-    } catch (error) {
-      console.error("İSG kaydı oluşturma hatası:", error);
-      notifications.show({
-        title: "Hata!",
-        message: "Kayıt oluşturulurken bir sorun oluştu.",
-        color: "red",
-        icon: <IconAlertCircle />,
-      });
+      locList.sort((a, b) => a.name.localeCompare(b.name));
+
+      setDepartments(deptList);
+      setLocations(locList);
+    } catch (err) {
+      console.error("Şirket ayarları alınamadı:", err);
+      setError(
+        "Şirket ayarları alınırken bir hata oluştu. Gerekirse Firestore yetkilerini kontrol edin."
+      );
     } finally {
-      setIsSubmitting(false);
+      setLoading(false);
     }
   };
 
-  const isFormInvalid =
-    !type ||
-    !title.trim() ||
-    !description.trim() ||
-    !location.trim() ||
-    !department.trim() ||
-    !eventDate;
+  useEffect(() => {
+    fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [proqiaUser]);
+
+  // -------- Yeni departman ekle --------
+  const handleAddDepartment = async () => {
+    if (!proqiaUser) return;
+    if (!newDeptName.trim()) return;
+
+    setSavingDept(true);
+    try {
+      const ref = await addDoc(collection(db, "departments"), {
+        company_id: proqiaUser.company_id,
+        name: newDeptName.trim(),
+        code: newDeptCode.trim() || null,
+        is_active: true,
+        created_at: Timestamp.now(),
+      });
+
+      setDepartments((prev) => [
+        ...prev,
+        {
+          id: ref.id,
+          name: newDeptName.trim(),
+          code: newDeptCode.trim() || "",
+          is_active: true,
+          company_id: proqiaUser.company_id,
+          created_at: Timestamp.now(),
+        },
+      ]);
+      setNewDeptName("");
+      setNewDeptCode("");
+
+      notifications.show({
+        title: "Departman eklendi",
+        message: "Yeni departman başarıyla kaydedildi.",
+        color: "teal",
+      });
+    } catch (err) {
+      console.error("Departman eklenemedi:", err);
+      notifications.show({
+        title: "Hata",
+        message: "Departman eklenirken bir sorun oluştu.",
+        color: "red",
+        icon: <IconAlertCircle size={18} />,
+      });
+    } finally {
+      setSavingDept(false);
+    }
+  };
+
+  // -------- Departman aktif/pasif --------
+  const toggleDepartmentActive = async (dept: Department) => {
+    try {
+      await updateDoc(doc(db, "departments", dept.id), {
+        is_active: !dept.is_active,
+      });
+
+      setDepartments((prev) =>
+        prev.map((d) =>
+          d.id === dept.id ? { ...d, is_active: !dept.is_active } : d
+        )
+      );
+    } catch (err) {
+      console.error("Departman güncellenemedi:", err);
+      notifications.show({
+        title: "Hata",
+        message: "Departman durumu güncellenirken bir sorun oluştu.",
+        color: "red",
+        icon: <IconAlertCircle size={18} />,
+      });
+    }
+  };
+
+  // -------- Yeni lokasyon ekle --------
+  const handleAddLocation = async () => {
+    if (!proqiaUser) return;
+    if (!newLocName.trim()) return;
+
+    setSavingLoc(true);
+    try {
+      const ref = await addDoc(collection(db, "locations"), {
+        company_id: proqiaUser.company_id,
+        name: newLocName.trim(),
+        code: newLocCode.trim() || null,
+        is_active: true,
+        created_at: Timestamp.now(),
+      });
+
+      setLocations((prev) => [
+        ...prev,
+        {
+          id: ref.id,
+          name: newLocName.trim(),
+          code: newLocCode.trim() || "",
+          is_active: true,
+          company_id: proqiaUser.company_id,
+          created_at: Timestamp.now(),
+        },
+      ]);
+      setNewLocName("");
+      setNewLocCode("");
+
+      notifications.show({
+        title: "Lokasyon eklendi",
+        message: "Yeni lokasyon başarıyla kaydedildi.",
+        color: "teal",
+      });
+    } catch (err) {
+      console.error("Lokasyon eklenemedi:", err);
+      notifications.show({
+        title: "Hata",
+        message: "Lokasyon eklenirken bir sorun oluştu.",
+        color: "red",
+        icon: <IconAlertCircle size={18} />,
+      });
+    } finally {
+      setSavingLoc(false);
+    }
+  };
+
+  // -------- Lokasyon aktif/pasif --------
+  const toggleLocationActive = async (loc: Location) => {
+    try {
+      await updateDoc(doc(db, "locations", loc.id), {
+        is_active: !loc.is_active,
+      });
+
+      setLocations((prev) =>
+        prev.map((l) =>
+          l.id === loc.id ? { ...l, is_active: !loc.is_active } : l
+        )
+      );
+    } catch (err) {
+      console.error("Lokasyon güncellenemedi:", err);
+      notifications.show({
+        title: "Hata",
+        message: "Lokasyon durumu güncellenirken bir sorun oluştu.",
+        color: "red",
+        icon: <IconAlertCircle size={18} />,
+      });
+    }
+  };
+
+  // -------- Ekran durumları --------
+  if (!proqiaUser) {
+    return (
+      <Center style={{ padding: 40 }}>
+        <Loader size="lg" />
+      </Center>
+    );
+  }
+
+  if (loading) {
+    return (
+      <Center style={{ padding: 40 }}>
+        <Loader size="lg" />
+      </Center>
+    );
+  }
+
+  if (error) {
+    return (
+      <Box maw={900} mx="auto">
+        <Alert
+          icon={<IconAlertCircle size={18} />}
+          title="Hata"
+          color="red"
+          mt="md"
+        >
+          {error}
+        </Alert>
+      </Box>
+    );
+  }
 
   return (
-    <Box maw={900} mx="auto">
-      <Title order={2} mb="xs">
-        Yeni İSG Olayı / Kaza Kaydı
+    <Box maw={1100} mx="auto">
+      <Title order={2} mb="sm">
+        Şirket Ayarları
       </Title>
-      <Text c="dimmed" mb="lg">
-        İş kazası, ramak kala veya tehlike bildirimini detaylı şekilde kaydedin.
+      <Text c="dimmed" fz="sm" mb="md">
+        Departman ve lokasyon tanımlarınızı yönetin. Bu bilgiler diğer
+        modüllerde seçim listesi olarak kullanılabilir.
       </Text>
 
-      <Paper withBorder shadow="sm" p="lg" radius="md">
-        <form onSubmit={handleCreateIncident}>
-          <Stack gap="md">
-            <Select
-              label="Kayıt Türü"
-              required
-              data={["İş Kazası", "Ramak Kala", "Tehlike Bildirimi"]}
-              value={type}
-              onChange={setType}
-            />
+      <Tabs defaultValue="departments">
+        <Tabs.List>
+          <Tabs.Tab
+            value="departments"
+            leftSection={<IconBuildingFactory size={16} />}
+          >
+            Departmanlar
+          </Tabs.Tab>
+          <Tabs.Tab value="locations" leftSection={<IconMapPin size={16} />}>
+            Lokasyonlar
+          </Tabs.Tab>
+        </Tabs.List>
 
-            <TextInput
-              required
-              label="Başlık"
-              placeholder="Örn: Pres hattında el sıkışması riski"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-            />
-
-            <Textarea
-              required
-              label="Olayın Açıklaması"
-              placeholder="Olayın nasıl gerçekleştiği, nedenleri, alınan ilk aksiyonlar..."
-              minRows={3}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-
-            <Group grow align="flex-end">
-              {locationOptions.length > 0 ? (
-                <Select
-                  required
-                  label="Lokasyon"
-                  placeholder={
-                    settingsLoading
-                      ? "Lokasyonlar yükleniyor..."
-                      : "Lokasyon seçin"
-                  }
-                  data={locationOptions}
-                  searchable
-                  nothingFoundMessage={
-                    settingsLoading ? "Yükleniyor..." : "Lokasyon tanımlı değil"
-                  }
-                  value={location || null}
-                  onChange={(val) => setLocation(val ?? "")}
-                />
-              ) : (
+        {/* Departmanlar */}
+        <Tabs.Panel value="departments" pt="md">
+          <Paper withBorder shadow="sm" radius="md" p="md">
+            <Stack gap="sm">
+              <Group align="flex-end">
                 <TextInput
-                  required
-                  label="Lokasyon"
-                  placeholder="Örn: Pres 2 hattı, Boyahane, Eloksal hattı"
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
+                  label="Departman Adı"
+                  placeholder="Örn: Kalite, Üretim, Bakım"
+                  value={newDeptName}
+                  onChange={(e) => setNewDeptName(e.currentTarget.value)}
+                  style={{ flex: 2 }}
                 />
-              )}
-
-              {departmentOptions.length > 0 ? (
-                <Select
-                  required
-                  label="Departman"
-                  placeholder={
-                    settingsLoading
-                      ? "Departmanlar yükleniyor..."
-                      : "Departman seçin"
-                  }
-                  data={departmentOptions}
-                  searchable
-                  nothingFoundMessage={
-                    settingsLoading
-                      ? "Yükleniyor..."
-                      : "Departman tanımlı değil"
-                  }
-                  value={department || null}
-                  onChange={(val) => setDepartment(val ?? "")}
-                />
-              ) : (
                 <TextInput
-                  required
-                  label="Departman"
-                  placeholder="Örn: Üretim, Bakım, Kalite"
-                  value={department}
-                  onChange={(e) => setDepartment(e.target.value)}
+                  label="Kod (opsiyonel)"
+                  placeholder="Örn: KAL, URET"
+                  value={newDeptCode}
+                  onChange={(e) => setNewDeptCode(e.currentTarget.value)}
+                  style={{ flex: 1 }}
                 />
-              )}
-            </Group>
+                <Button
+                  mt={22}
+                  onClick={handleAddDepartment}
+                  loading={savingDept}
+                  disabled={!newDeptName.trim()}
+                >
+                  Ekle
+                </Button>
+              </Group>
 
-            <Group grow align="flex-end">
-              <DateInput
-                required
-                label="Olay Tarihi"
-                placeholder="Bir tarih seçin"
-                value={eventDate}
-                onChange={(value) =>
-                  setEventDate(value ? new Date(value) : null)
-                }
-                locale="tr"
-                valueFormat="DD MMMM YYYY"
-                leftSection={<IconCalendar size={16} stroke={1.5} />}
-              />
-              <Select
-                label="Vardiya"
-                data={[
-                  "Vardiya Belirtilmedi",
-                  "1. Vardiya",
-                  "2. Vardiya",
-                  "3. Vardiya",
-                  "Gündüz",
-                ]}
-                value={shift}
-                onChange={setShift}
-              />
-            </Group>
-
-            <Group grow align="flex-end">
-              <Select
-                label="Yaralanma Şiddeti"
-                data={["Yok", "Hafif", "Ciddi"]}
-                value={injurySeverity}
-                onChange={setInjurySeverity}
-              />
-              <NumberInput
-                label="Olay Şiddeti (1-5)"
-                min={1}
-                max={5}
-                value={severity}
-                onChange={(val) => setSeverity(val ?? "")}
-              />
-            </Group>
-
-            <TextInput
-              label="Etkilenen Kişi (varsa)"
-              placeholder="Örn: Ali Yılmaz, Operatör"
-              value={injuredPerson}
-              onChange={(e) => setInjuredPerson(e.target.value)}
-            />
-
-            <Textarea
-              label="İlk / Anlık Alınan Aksiyonlar"
-              placeholder="Olay sonrası yapılan müdahaleler, durdurulan hatlar, alınan önlemler..."
-              minRows={3}
-              value={immediateAction}
-              onChange={(e) => setImmediateAction(e.target.value)}
-            />
-
-            <Textarea
-              label="Kök Neden (Varsa)"
-              placeholder="Kök neden analizi sonuçları, 5N1K, balık kılçığı vb."
-              minRows={2}
-              value={rootCause}
-              onChange={(e) => setRootCause(e.target.value)}
-            />
-
-            <Select
-              label="Durum"
-              data={["Açık", "İncelemede", "Kapalı"]}
-              value={status}
-              onChange={setStatus}
-            />
-
-            <Group justify="space-between" mt="md">
-              <Button
-                variant="default"
-                type="button"
-                onClick={() => navigate("/incidents")}
+              <Table
+                striped
+                highlightOnHover
+                withTableBorder
+                verticalSpacing="sm"
+                fz="sm"
               >
-                İSG Kayıt Listesine Dön
-              </Button>
-              <Button
-                type="submit"
-                loading={isSubmitting}
-                disabled={isFormInvalid || isSubmitting}
-                size="md"
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Departman</Table.Th>
+                    <Table.Th>Kod</Table.Th>
+                    <Table.Th>Durum</Table.Th>
+                    <Table.Th>Oluşturulma</Table.Th>
+                    <Table.Th style={{ textAlign: "right" }}>Aktif/Pasif</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {departments.length === 0 ? (
+                    <Table.Tr>
+                      <Table.Td colSpan={5}>
+                        <Text c="dimmed">
+                          Henüz tanımlanmış bir departman yok. Yukarıdan
+                          ekleyebilirsiniz.
+                        </Text>
+                      </Table.Td>
+                    </Table.Tr>
+                  ) : (
+                    departments.map((d) => {
+                      const createdAt = toJsDate(d.created_at);
+                      return (
+                        <Table.Tr key={d.id}>
+                          <Table.Td>{d.name}</Table.Td>
+                          <Table.Td>{d.code || "-"}</Table.Td>
+                          <Table.Td>
+                            <Badge
+                              color={d.is_active ? "teal" : "red"}
+                              variant="light"
+                            >
+                              {d.is_active ? "Aktif" : "Pasif"}
+                            </Badge>
+                          </Table.Td>
+                          <Table.Td>
+                            {createdAt
+                              ? createdAt.toLocaleDateString("tr-TR")
+                              : "-"}
+                          </Table.Td>
+                          <Table.Td style={{ textAlign: "right" }}>
+                            <Switch
+                              checked={d.is_active}
+                              onChange={() => toggleDepartmentActive(d)}
+                            />
+                          </Table.Td>
+                        </Table.Tr>
+                      );
+                    })
+                  )}
+                </Table.Tbody>
+              </Table>
+            </Stack>
+          </Paper>
+        </Tabs.Panel>
+
+        {/* Lokasyonlar */}
+        <Tabs.Panel value="locations" pt="md">
+          <Paper withBorder shadow="sm" radius="md" p="md">
+            <Stack gap="sm">
+              <Group align="flex-end">
+                <TextInput
+                  label="Lokasyon Adı"
+                  placeholder="Örn: Esenyurt Fabrika, Depo, Merkez Ofis"
+                  value={newLocName}
+                  onChange={(e) => setNewLocName(e.currentTarget.value)}
+                  style={{ flex: 2 }}
+                />
+                <TextInput
+                  label="Kod (opsiyonel)"
+                  placeholder="Örn: ESNYRT, DEPO1"
+                  value={newLocCode}
+                  onChange={(e) => setNewLocCode(e.currentTarget.value)}
+                  style={{ flex: 1 }}
+                />
+                <Button
+                  mt={22}
+                  onClick={handleAddLocation}
+                  loading={savingLoc}
+                  disabled={!newLocName.trim()}
+                >
+                  Ekle
+                </Button>
+              </Group>
+
+              <Table
+                striped
+                highlightOnHover
+                withTableBorder
+                verticalSpacing="sm"
+                fz="sm"
               >
-                Kaydı Oluştur
-              </Button>
-            </Group>
-          </Stack>
-        </form>
-      </Paper>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Lokasyon</Table.Th>
+                    <Table.Th>Kod</Table.Th>
+                    <Table.Th>Durum</Table.Th>
+                    <Table.Th>Oluşturulma</Table.Th>
+                    <Table.Th style={{ textAlign: "right" }}>Aktif/Pasif</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {locations.length === 0 ? (
+                    <Table.Tr>
+                      <Table.Td colSpan={5}>
+                        <Text c="dimmed">
+                          Henüz tanımlanmış bir lokasyon yok. Yukarıdan
+                          ekleyebilirsiniz.
+                        </Text>
+                      </Table.Td>
+                    </Table.Tr>
+                  ) : (
+                    locations.map((l) => {
+                      const createdAt = toJsDate(l.created_at);
+                      return (
+                        <Table.Tr key={l.id}>
+                          <Table.Td>{l.name}</Table.Td>
+                          <Table.Td>{l.code || "-"}</Table.Td>
+                          <Table.Td>
+                            <Badge
+                              color={l.is_active ? "teal" : "red"}
+                              variant="light"
+                            >
+                              {l.is_active ? "Aktif" : "Pasif"}
+                            </Badge>
+                          </Table.Td>
+                          <Table.Td>
+                            {createdAt
+                              ? createdAt.toLocaleDateString("tr-TR")
+                              : "-"}
+                          </Table.Td>
+                          <Table.Td style={{ textAlign: "right" }}>
+                            <Switch
+                              checked={l.is_active}
+                              onChange={() => toggleLocationActive(l)}
+                            />
+                          </Table.Td>
+                        </Table.Tr>
+                      );
+                    })
+                  )}
+                </Table.Tbody>
+              </Table>
+            </Stack>
+          </Paper>
+        </Tabs.Panel>
+      </Tabs>
     </Box>
   );
 }
 
-export default NewIncident;
+export default CompanySettings;
