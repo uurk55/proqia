@@ -24,6 +24,7 @@ import {
   Select,
   Button,
   Alert,
+  Stack,
 } from "@mantine/core";
 import { IconSearch, IconAlertCircle } from "@tabler/icons-react";
 import { useAuth } from "../../context/AuthContext";
@@ -40,8 +41,8 @@ type KPI = {
   responsible_user: string;
   created_at?: Timestamp | Date | null;
   company_id: string;
-  current_value?: number | null;  // YENİ
-  status?: string | null;         // YENİ  ("Takipte" | "Hedefte" | "Riskte" | "Geride" ...)
+  current_value?: number | null;
+  status?: string | null; // "Takipte" | "Hedefte" | "Riskte" | "Geride" ...
 };
 
 const toJsDate = (value?: Timestamp | Date | null): Date | undefined => {
@@ -75,7 +76,7 @@ function KPIList() {
   const [searchTerm, setSearchTerm] = useState("");
   const [periodFilter, setPeriodFilter] = useState<string | null>("Tümü");
   const [departmentFilter, setDepartmentFilter] = useState<string | null>("Tümü");
-  const [statusFilter, setStatusFilter] = useState<string | null>("Tümü"); // YENİ
+  const [statusFilter, setStatusFilter] = useState<string | null>("Tümü");
 
   const fetchKpis = async () => {
     if (!proqiaUser) {
@@ -101,14 +102,19 @@ function KPIList() {
           name: data.name ?? "",
           description: data.description ?? "",
           unit: data.unit ?? "",
-          target_value: data.target_value ?? 0,
+          target_value: Number(data.target_value ?? 0),
           period: data.period ?? "",
           department: data.department ?? "",
           responsible_user: data.responsible_user ?? "",
           created_at: data.created_at ?? null,
           company_id: data.company_id ?? "",
-          current_value: data.current_value ?? null, // YENİ
-          status: data.status ?? null,               // YENİ
+          current_value:
+            typeof data.current_value === "number"
+              ? data.current_value
+              : data.current_value != null
+              ? Number(data.current_value)
+              : null,
+          status: data.status ?? null,
         };
       });
 
@@ -165,7 +171,7 @@ function KPIList() {
     );
   }
 
-  // Filtreleme
+  // Filtrelenmiş liste
   const filteredKpis = kpis.filter((kpi) => {
     const term = searchTerm.toLowerCase().trim();
 
@@ -191,14 +197,22 @@ function KPIList() {
     return matchesSearch && matchesPeriod && matchesDepartment && matchesStatus;
   });
 
-  // Departman listesini dinamik yapmak için
+  // Departmanları dinamik oluştur
   const departmentOptions = Array.from(
     new Set(kpis.map((k) => k.department).filter(Boolean))
   );
 
+  // Küçük özet: kaç hedefte / takipte / geride
+  const total = kpis.length;
+  const hedefteCount = kpis.filter((k) => k.status === "Hedefte").length;
+  const takipteCount = kpis.filter(
+    (k) => !k.status || k.status === "Takipte"
+  ).length;
+  const gerideCount = kpis.filter((k) => k.status === "Geride").length;
+
   return (
     <Box maw={1100} mx="auto">
-      {/* Üst kısım */}
+      {/* Üst kısım + filtreler */}
       <Group justify="space-between" mb="md" align="flex-start">
         <Box>
           <Title order={2} mb={4}>
@@ -231,7 +245,7 @@ function KPIList() {
               onChange={setDepartmentFilter}
               data={[
                 "Tümü",
-                ...departmentOptions, // var olan departmanlardan
+                ...departmentOptions,
               ]}
             />
             <Select
@@ -254,6 +268,48 @@ function KPIList() {
         </Box>
       </Group>
 
+      {/* KPI Özet Şeridi */}
+      <Paper withBorder shadow="xs" radius="md" p="sm" mb="sm">
+        <Group justify="space-between">
+          <Stack gap={2}>
+            <Text fz="xs" c="dimmed">
+              Toplam KPI
+            </Text>
+            <Text fz="lg" fw={600}>
+              {total}
+            </Text>
+          </Stack>
+
+          <Stack gap={2}>
+            <Text fz="xs" c="dimmed">
+              Hedefte
+            </Text>
+            <Text fz="lg" fw={600} c="teal">
+              {hedefteCount}
+            </Text>
+          </Stack>
+
+          <Stack gap={2}>
+            <Text fz="xs" c="dimmed">
+              Takipte
+            </Text>
+            <Text fz="lg" fw={600} c="blue">
+              {takipteCount}
+            </Text>
+          </Stack>
+
+          <Stack gap={2}>
+            <Text fz="xs" c="dimmed">
+              Geride
+            </Text>
+            <Text fz="lg" fw={600} c="red">
+              {gerideCount}
+            </Text>
+          </Stack>
+        </Group>
+      </Paper>
+
+      {/* Liste */}
       <Paper withBorder shadow="sm" radius="md" p="sm">
         {kpis.length === 0 ? (
           <Text c="dimmed">

@@ -1,13 +1,14 @@
 // src/pages/kpi/NewKPI.tsx
 
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   collection,
   addDoc,
   Timestamp,
-  doc,
-  getDoc,
+  getDocs,
+  query,
+  where,
 } from "firebase/firestore";
 import { db } from "../../firebaseConfig";
 import { useAuth } from "../../context/AuthContext";
@@ -24,10 +25,12 @@ import {
   Select,
   Button,
   Group,
-  Alert,
+  NativeSelect,
 } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { IconCheck, IconAlertCircle } from "@tabler/icons-react";
+
+// ---------------- Grup içi component ----------------
 
 type GroupInputsProps = {
   unit: string;
@@ -62,6 +65,8 @@ function GroupInputs({
   );
 }
 
+// ---------------- Ana component ----------------
+
 function NewKPI() {
   const { proqiaUser, currentUser } = useAuth();
   const navigate = useNavigate();
@@ -73,50 +78,57 @@ function NewKPI() {
   const [unit, setUnit] = useState("%");
   const [targetValue, setTargetValue] = useState<number | string>(0);
   const [period, setPeriod] = useState<string | null>("Aylık");
-  const [department, setDepartment] = useState<string | null>(null);
+  const [department, setDepartment] = useState("");
 
-  // Departmanlar şirket ayarlarından
-  const [departments, setDepartments] = useState<string[]>([]);
-  const [settingsLoading, setSettingsLoading] = useState(true);
-  const [settingsError, setSettingsError] = useState("");
+  // Departman listesi (Company Settings > Departments)
+  const [departmentOptions, setDepartmentOptions] = useState<string[]>([]);
+  const [deptLoading, setDeptLoading] = useState(true);
 
+  // Departmanları çek – Yeni Eğitim / Yeni İSG ile aynı mantık
   useEffect(() => {
-    const loadSettings = async () => {
+    const loadDepartments = async () => {
       if (!proqiaUser) {
-        setSettingsLoading(false);
+        setDeptLoading(false);
         return;
       }
 
-      setSettingsLoading(true);
-      setSettingsError("");
       try {
-        const ref = doc(db, "company_settings", proqiaUser.company_id);
-        const snap = await getDoc(ref);
-
-        if (snap.exists()) {
-          const data = snap.data() as any;
-          setDepartments(Array.isArray(data.departments) ? data.departments : []);
-        } else {
-          setDepartments([]);
-        }
-      } catch (err) {
-        console.error("Şirket ayarları (departman) alınamadı:", err);
-        setSettingsError(
-          "Departman listesi yüklenirken bir hata oluştu. Yine de metin girişi yapabilirsiniz."
+        const snap = await getDocs(
+          query(
+            collection(db, "departments"),
+            where("company_id", "==", proqiaUser.company_id),
+            where("is_active", "==", true)
+          )
         );
+
+        const list = snap.docs
+          .map((d) => (d.data() as any).name as string)
+          .filter(Boolean)
+          .sort((a, b) => a.localeCompare(b, "tr"));
+
+        setDepartmentOptions(list);
+      } catch (err) {
+        console.error("Departman listesi alınamadı (KPI):", err);
+        notifications.show({
+          title: "Uyarı",
+          message:
+            "Departman listesi alınırken bir sorun oluştu. Departmanı elle yazabilirsiniz.",
+          color: "yellow",
+          icon: <IconAlertCircle />,
+        });
       } finally {
-        setSettingsLoading(false);
+        setDeptLoading(false);
       }
     };
 
-    loadSettings();
+    loadDepartments();
   }, [proqiaUser]);
 
   const handleCreateKPI = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!proqiaUser || !currentUser) return;
 
-    if (!name.trim() || !unit || !period || !(department || "").trim()) {
+    if (!name.trim() || !unit || !period || !department.trim()) {
       notifications.show({
         title: "Eksik bilgi",
         message: "Hedef adı, birim, periyot ve departman zorunludur.",
@@ -135,12 +147,12 @@ function NewKPI() {
         unit,
         target_value: Number(targetValue),
         period, // "Aylık" | "Yıllık"
-        department: (department || "").trim(),
+        department: department.trim(),
         responsible_user: currentUser.uid,
 
         // DURUM / GERÇEKLEŞEN İÇİN ALANLAR
         status: "Takipte", // varsayılan KPI durumu
-        current_value: null,
+        current_value: null, // henüz gerçekleşen yok
         last_update_at: null,
 
         created_at: Timestamp.now(),
@@ -168,7 +180,7 @@ function NewKPI() {
   };
 
   const isFormInvalid =
-    !name.trim() || !unit || !period || !(department || "").trim() || targetValue === "";
+    !name.trim() || !unit || !period || !department.trim() || targetValue === "";
 
   return (
     <Box maw={800} mx="auto">
@@ -178,17 +190,6 @@ function NewKPI() {
       <Text c="dimmed" mb="lg">
         Süreç performansını takip etmek için yeni bir KPI tanımlayın.
       </Text>
-
-      {settingsError && (
-        <Alert
-          icon={<IconAlertCircle size={18} />}
-          title="Departman bilgisi"
-          color="yellow"
-          mb="sm"
-        >
-          {settingsError}
-        </Alert>
-      )}
 
       <Paper withBorder shadow="sm" p="lg" radius="md">
         <form onSubmit={handleCreateKPI}>
@@ -225,36 +226,38 @@ function NewKPI() {
               onChange={setPeriod}
             />
 
-            {departments.length > 0 ? (
-              <Select
-                required
-                label="Sorumlu Departman"
-                placeholder={
-                  settingsLoading
-                    ? "Departmanlar yükleniyor..."
-                    : "Departman seçin"
-                }
-                data={departments}
-                searchable
-                nothingFoundMessage={
-                  settingsLoading ? "Yükleniyor..." : "Departman tanımlı değil"
-                }
-                value={department}
-                onChange={(val) => setDepartment(val ?? "")}
-              />
-            ) : (
-              <TextInput
-                required
-                label="Sorumlu Departman"
-                placeholder="Örn: Kalite, Üretim, Satış"
-                value={department || ""}
-                onChange={(e) => setDepartment(e.target.value)}
-              />
-            )}
+            {/* Departman Select – diğer modüllerle aynı mantık */}
+            {/* Sorumlu Departman */}
+{departmentOptions.length > 0 ? (
+  <NativeSelect
+    required
+    label="Sorumlu Departman"
+    data={["Departman seçin", ...departmentOptions]}
+    value={department || "Departman seçin"}
+    onChange={(e) => {
+      const val = e.currentTarget.value;
+      setDepartment(val === "Departman seçin" ? "" : val);
+    }}
+  />
+) : (
+  <TextInput
+    required
+    label="Sorumlu Departman"
+    placeholder="Örn: Kalite, Üretim, Satış"
+    value={department}
+    onChange={(e) => setDepartment(e.target.value)}
+    description={
+      deptLoading
+        ? "Departmanlar yükleniyor..."
+        : "Şirket ayarlarında departman tanımlı değilse buraya manuel yazabilirsiniz."
+    }
+  />
+)}
+
 
             <Button
               type="submit"
-              loading={isFormInvalid || isSubmitting}
+              loading={isSubmitting}
               disabled={isFormInvalid || isSubmitting}
               size="md"
               mt="md"

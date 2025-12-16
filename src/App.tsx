@@ -8,7 +8,7 @@ import AuthRoute from './components/AuthRoute.tsx';
 import Navbar from './components/Navbar.tsx';
 import RoleManager from './pages/admin/RoleManager.tsx';
 import WorkflowManager from './pages/admin/WorkflowManager.tsx';
-import DocumentUpload from './pages/documents/DocumentUpload.tsx';
+import NewDocument from "./pages/documents/NewDocument";
 import DocumentApproval from './pages/documents/DocumentApproval.tsx';
 import DocumentList from './pages/documents/DocumentList.tsx';
 import DocumentDetail from './pages/documents/DocumentDetail.tsx';
@@ -102,10 +102,7 @@ function App() {
 
 
           {/* DMS ROTALARI */}
-          <Route 
-            path="/documents/new" 
-            element={ <ProtectedRoute> <DocumentUpload /> </ProtectedRoute> }
-          />
+          <Route path="/documents/new" element={<NewDocument />} />
           <Route 
             path="/documents" 
             element={ <ProtectedRoute> <DocumentList /> </ProtectedRoute> }
@@ -137,10 +134,15 @@ function App() {
 
 
           {/* GÖREV ROTASI */}
-          <Route 
-            path="/task/approve/:taskId" 
-            element={ <ProtectedRoute> <DocumentApproval /> </ProtectedRoute> }
-          />
+          <Route
+  path="/documents/approval"
+  element={
+    <ProtectedRoute /* istersen izin koyabilirsin: requiredPermission="doc_approve" */>
+      <DocumentApproval />
+    </ProtectedRoute>
+  }
+/>
+
 
           {/* DENETİM ROTALARI */}
           <Route 

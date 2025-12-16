@@ -1,14 +1,8 @@
 // src/pages/trainings/NewTraining.tsx
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  collection,
-  addDoc,
-  Timestamp,
-  doc,
-  getDoc,
-} from "firebase/firestore";
+import { collection, addDoc, Timestamp } from "firebase/firestore";
 import { db } from "../../firebaseConfig";
 import { useAuth } from "../../context/AuthContext";
 
@@ -30,6 +24,7 @@ import { DateInput } from "@mantine/dates";
 import { IconCalendar, IconCheck, IconAlertCircle } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
 import "dayjs/locale/tr";
+import { useCompanyOptions } from "../../hooks/useCompanyOptions";
 
 function NewTraining() {
   const { proqiaUser, currentUser } = useAuth();
@@ -42,47 +37,19 @@ function NewTraining() {
   const [date, setDate] = useState<Date | null>(null);
   const [durationHours, setDurationHours] = useState<number | string>(2);
   const [trainer, setTrainer] = useState("");
-  const [location, setLocation] = useState<string | null>(null);
+  const [location, setLocation] = useState("");
+  const [department, setDepartment] = useState("");
   const [targetGroup, setTargetGroup] = useState("");
   const [notes, setNotes] = useState("");
   const [status, setStatus] = useState<string | null>("Planlandı");
 
-  // ------ Şirket ayarlarından lokasyon listesi ------
-  const [locations, setLocations] = useState<string[]>([]);
-  const [settingsLoading, setSettingsLoading] = useState(true);
-  const [settingsError, setSettingsError] = useState("");
-
-  useEffect(() => {
-    const loadSettings = async () => {
-      if (!proqiaUser) {
-        setSettingsLoading(false);
-        return;
-      }
-      setSettingsLoading(true);
-      setSettingsError("");
-
-      try {
-        const ref = doc(db, "company_settings", proqiaUser.company_id);
-        const snap = await getDoc(ref);
-
-        if (snap.exists()) {
-          const data = snap.data() as any;
-          setLocations(Array.isArray(data.locations) ? data.locations : []);
-        } else {
-          setLocations([]);
-        }
-      } catch (err) {
-        console.error("Şirket ayarları (lokasyon) alınamadı:", err);
-        setSettingsError(
-          "Lokasyon listesi yüklenirken bir hata oluştu. Yine de metin girişi yapabilirsiniz."
-        );
-      } finally {
-        setSettingsLoading(false);
-      }
-    };
-
-    loadSettings();
-  }, [proqiaUser]);
+  // Şirket ayarlarından departman & lokasyon listeleri
+  const {
+    departments,
+    locations,
+    loading: optionsLoading,
+    error: optionsError,
+  } = useCompanyOptions();
 
   const handleCreateTraining = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -94,7 +61,8 @@ function NewTraining() {
       !trainingType ||
       !date ||
       !trainer.trim() ||
-      !targetGroup.trim()
+      !targetGroup.trim() ||
+      !department.trim()
     ) {
       notifications.show({
         title: "Eksik bilgi",
@@ -116,7 +84,8 @@ function NewTraining() {
         date: Timestamp.fromDate(date),
         duration_hours: duration,
         trainer: trainer.trim(),
-        location: (location || "").trim(),
+        location: location.trim(),
+        department: department.trim(), // YENİ
         target_group: targetGroup.trim(),
         notes: notes.trim(),
         status: status || "Planlandı", // Planlandı / Gerçekleşti / İptal
@@ -150,7 +119,8 @@ function NewTraining() {
     !trainingType ||
     !date ||
     !trainer.trim() ||
-    !targetGroup.trim();
+    !targetGroup.trim() ||
+    !department.trim();
 
   return (
     <Box maw={800} mx="auto">
@@ -161,18 +131,18 @@ function NewTraining() {
         Planlanan veya gerçekleştirilen eğitimleri sisteme kaydedin.
       </Text>
 
-      {settingsError && (
-        <Alert
-          icon={<IconAlertCircle size={18} />}
-          title="Lokasyon bilgisi"
-          color="yellow"
-          mb="sm"
-        >
-          {settingsError}
-        </Alert>
-      )}
-
       <Paper withBorder shadow="sm" p="lg" radius="md">
+        {optionsError && (
+          <Alert
+            icon={<IconAlertCircle size={18} />}
+            title="Uyarı"
+            color="yellow"
+            mb="md"
+          >
+            {optionsError} Departman ve lokasyon alanlarını manuel girebilirsiniz.
+          </Alert>
+        )}
+
         <form onSubmit={handleCreateTraining}>
           <Stack gap="md">
             <TextInput
@@ -228,29 +198,58 @@ function NewTraining() {
               onChange={(e) => setTrainer(e.target.value)}
             />
 
-            {/* LOKASYON: şirket ayarlarından geliyor */}
-            {locations.length > 0 ? (
-              <Select
-                label="Yer"
-                placeholder={
-                  settingsLoading ? "Lokasyonlar yükleniyor..." : "Lokasyon seçin"
-                }
-                data={locations}
-                searchable
-                nothingFoundMessage={
-                  settingsLoading ? "Yükleniyor..." : "Lokasyon tanımlı değil"
-                }
-                value={location}
-                onChange={(val) => setLocation(val ?? "")}
-              />
-            ) : (
-              <TextInput
-                label="Yer"
-                placeholder="Örn: Toplantı Salonu, Online, Eğitim Sınıfı"
-                value={location || ""}
-                onChange={(e) => setLocation(e.target.value)}
-              />
-            )}
+            {/* Departman & Lokasyon aynı satırda */}
+            <Group grow align="flex-end">
+              {departments.length > 0 ? (
+                <Select
+                  required
+                  label="Departman"
+                  placeholder={
+                    optionsLoading
+                      ? "Departmanlar yükleniyor..."
+                      : "Departman seçin"
+                  }
+                  data={departments}
+                  searchable
+                  nothingFoundMessage={
+                    optionsLoading ? "Yükleniyor..." : "Departman tanımlı değil"
+                  }
+                  value={department || null}
+                  onChange={(val) => setDepartment(val ?? "")}
+                />
+              ) : (
+                <TextInput
+                  required
+                  label="Departman"
+                  placeholder="Örn: Üretim, Bakım, Kalite"
+                  value={department}
+                  onChange={(e) => setDepartment(e.target.value)}
+                />
+              )}
+
+              {locations.length > 0 ? (
+                <Select
+                  label="Yer"
+                  placeholder={
+                    optionsLoading ? "Lokasyonlar yükleniyor..." : "Yer seçin"
+                  }
+                  data={locations}
+                  searchable
+                  nothingFoundMessage={
+                    optionsLoading ? "Yükleniyor..." : "Lokasyon tanımlı değil"
+                  }
+                  value={location || null}
+                  onChange={(val) => setLocation(val ?? "")}
+                />
+              ) : (
+                <TextInput
+                  label="Yer"
+                  placeholder="Örn: Toplantı Salonu, Online, Eğitim Sınıfı"
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                />
+              )}
+            </Group>
 
             <TextInput
               required
@@ -284,12 +283,13 @@ function NewTraining() {
                 Eğitim Listesine Dön
               </Button>
               <Button
-                type="submit"
-                loading={isSubmitting}
-                disabled={isFormInvalid || isSubmitting}
-              >
-                Eğitimi Kaydet
-              </Button>
+  type="submit"
+  loading={isSubmitting}                    // ✅
+  disabled={isFormInvalid || isSubmitting}  // ✅
+>
+  Eğitimi Kaydet
+</Button>
+
             </Group>
           </Stack>
         </form>

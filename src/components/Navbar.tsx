@@ -334,6 +334,10 @@ function Navbar() {
                           İş Akışları
                         </Menu.Item>
                       )}
+                      <Menu.Item component={Link} to="/documents/approval">
+  Doküman Onay
+</Menu.Item>
+
                       {permissions?.user_manage && (
                         <Menu.Item component={Link} to="/admin/users">
                           Kullanıcılar

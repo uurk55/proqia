@@ -1,141 +1,234 @@
-// src/pages/DocumentList.tsx (YENİ VE MODERN ARAYÜZ)
+// src/pages/DocumentList.tsx
 
-import { useState, useEffect } from 'react';
-import { useAuth } from '../../context/AuthContext';
-import { db } from '../../firebaseConfig';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import type { DocumentData } from 'firebase/firestore'; 
-import { Link } from 'react-router-dom'; 
-
-// 1. GÜNCELLEME: Sayfa düzeni için <Stack> ekliyoruz
+import { useState, useEffect } from "react";
+import { useAuth } from "../../context/AuthContext";
+import { db } from "../../firebaseConfig";
 import {
-  Title, Text, Paper, Table, Button, Group, Loader, TextInput, Alert, Stack
-} from '@mantine/core';
-import { IconSearch, IconAlertCircle } from '@tabler/icons-react';
+  collection,
+  query,
+  where,
+  getDocs,
+  Timestamp,
+} from "firebase/firestore";
+import {
+  Title,
+  Text,
+  Paper,
+  Table,
+  Button,
+  Group,
+  Loader,
+  TextInput,
+  Alert,
+  Stack,
+  Badge,
+} from "@mantine/core";
+import { IconSearch, IconAlertCircle } from "@tabler/icons-react";
+import { Link } from "react-router-dom";
 
-// Tip tanımı aynı kalıyor
-interface DocumentItem extends DocumentData {
+/* 🔹 Firestore’daki GERÇEK status değerleri */
+type EnStatus = "draft" | "pending" | "published" | "canceled" | string;
+
+type DocumentItem = {
   id: string;
-  doc_code: string;
-  doc_name: string;
-  doc_type: string;
-  status: string;
-}
+  code: string;
+  title: string;
+  type: string;
+  status: EnStatus;
+  owner_department?: string;
+  created_at?: Timestamp | Date | null;
+};
+
+const toJsDate = (value?: Timestamp | Date | null): Date | undefined => {
+  if (!value) return undefined;
+  return value instanceof Timestamp ? value.toDate() : value;
+};
+
+/* 🔹 EN → TR */
+const statusTR = (status: EnStatus) => {
+  switch (status) {
+    case "published":
+      return "Yayınlandı";
+    case "pending":
+      return "Onay Bekliyor";
+    case "draft":
+      return "Taslak";
+    case "canceled":
+      return "İptal";
+    default:
+      return status;
+  }
+};
+
+const statusColor = (status: EnStatus) => {
+  switch (status) {
+    case "published":
+      return "teal";
+    case "pending":
+      return "blue";
+    case "draft":
+      return "gray";
+    case "canceled":
+      return "red";
+    default:
+      return "gray";
+  }
+};
 
 function DocumentList() {
   const { proqiaUser, permissions } = useAuth();
-  
-  const [allDocuments, setAllDocuments] = useState<DocumentItem[]>([]); 
-  const [filteredDocuments, setFilteredDocuments] = useState<DocumentItem[]>([]); 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [searchTerm, setSearchTerm] = useState(''); 
 
-  // Veri çekme ve filtreleme mantığı tamamen aynı, çünkü zaten çok iyi çalışıyor.
+  const [allDocuments, setAllDocuments] = useState<DocumentItem[]>([]);
+  const [filteredDocuments, setFilteredDocuments] = useState<DocumentItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+
   useEffect(() => {
     if (!permissions?.doc_view_list) {
       setLoading(false);
       setError("Yayınlanmış dokümanları görme yetkiniz yok.");
-      return; 
+      return;
     }
-    if (!proqiaUser) return; 
+    if (!proqiaUser) return;
 
     const fetchDocuments = async () => {
       setLoading(true);
-      setError('');
+      setError("");
+
       try {
-        const docsQuery = query(
+        const q = query(
           collection(db, "documents"),
           where("company_id", "==", proqiaUser.company_id),
-          where("status", "==", "Yayınlandı")
+          where("status", "==", "published") // ✅ DOĞRU
         );
 
-        const querySnapshot = await getDocs(docsQuery);
-        const docsList: DocumentItem[] = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as DocumentItem));
-        
-        setAllDocuments(docsList); 
-        setFilteredDocuments(docsList); 
+        const snap = await getDocs(q);
 
-      } catch (err: any) {
-        setError("Dokümanlar çekilemedi. Lütfen daha sonra tekrar deneyin.");
+        const list: DocumentItem[] = snap.docs.map((d) => {
+          const data = d.data() as any;
+          return {
+            id: d.id,
+            code: data.code ?? "",
+            title: data.title ?? "",
+            type: data.type ?? "",
+            status: data.status ?? "draft",
+            owner_department: data.owner_department ?? "",
+            created_at: data.created_at ?? null,
+          };
+        });
+
+        setAllDocuments(list);
+        setFilteredDocuments(list);
+      } catch (err) {
+        console.error("Doküman listesi alınamadı:", err);
+        setError("Dokümanlar çekilemedi.");
       } finally {
         setLoading(false);
       }
     };
+
     fetchDocuments();
   }, [proqiaUser, permissions]);
 
   useEffect(() => {
-    const filtered = allDocuments.filter((doc: DocumentItem) => 
-      doc.doc_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      doc.doc_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      doc.doc_type.toLowerCase().includes(searchTerm.toLowerCase())
+    const term = searchTerm.toLowerCase().trim();
+    setFilteredDocuments(
+      allDocuments.filter((d) =>
+        !term
+          ? true
+          : d.code.toLowerCase().includes(term) ||
+            d.title.toLowerCase().includes(term) ||
+            d.type.toLowerCase().includes(term) ||
+            (d.owner_department || "").toLowerCase().includes(term)
+      )
     );
-    setFilteredDocuments(filtered);
   }, [searchTerm, allDocuments]);
 
-  // Yükleme ve Hata durumları aynı
-  if (loading) return <Loader size="lg" style={{ display: 'block', margin: '150px auto' }} />;
-  if (error) return <Alert icon={<IconAlertCircle />} title="Erişim Reddedildi!" color="red">{error}</Alert>;
+  if (loading) {
+    return <Loader size="lg" style={{ margin: "150px auto" }} />;
+  }
 
+  if (error) {
+    return (
+      <Alert icon={<IconAlertCircle />} title="Hata" color="red">
+        {error}
+      </Alert>
+    );
+  }
 
-  // --- 2. GÜNCELLEME: ARAYÜZÜN TAMAMEN YENİLENMİŞ HALİ ---
   return (
     <Stack gap="lg">
-      {/* BAŞLIK VE ARAMA ALANI */}
       <Group justify="space-between">
         <Stack gap={0}>
           <Title order={2}>Doküman Kütüphanesi</Title>
-          <Text c="dimmed">Yayınlanmış ve güncel dokümanları arayın ve görüntüleyin.</Text>
+          <Text c="dimmed">
+            Yayınlanmış ve güncel dokümanlar
+          </Text>
         </Stack>
+
         <TextInput
-          placeholder="Kod, ad veya tipe göre ara..."
-          leftSection={<IconSearch size="0.9rem" stroke={1.5} />} 
+          placeholder="Ara..."
+          leftSection={<IconSearch size={16} />}
           value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          style={{ width: '350px' }}
+          onChange={(e) => setSearchTerm(e.currentTarget.value)}
+          w={320}
         />
       </Group>
-      
-      {/* TABLO ALANI */}
+
       <Paper withBorder shadow="sm" radius="md">
-        {allDocuments.length === 0 ? ( 
+        {filteredDocuments.length === 0 ? (
           <Text ta="center" p="xl" c="dimmed">
-            Şu anda yayınlanmış bir doküman bulunmuyor.
-          </Text>
-        ) : filteredDocuments.length === 0 ? ( 
-          <Text ta="center" p="xl" c="dimmed">
-            Arama kriterlerinize uyan doküman bulunamadı.
+            Yayınlanmış doküman yok.
           </Text>
         ) : (
-          <Table striped highlightOnHover verticalSpacing="sm" fz="sm">
+          <Table striped highlightOnHover>
             <Table.Thead>
               <Table.Tr>
-                <Table.Th>Doküman Kodu</Table.Th>
-                <Table.Th>Doküman Adı</Table.Th>
-                <Table.Th>Tipi</Table.Th>
-                <Table.Th style={{ textAlign: 'right' }}>Aksiyon</Table.Th>
+                <Table.Th>Kod</Table.Th>
+                <Table.Th>Ad</Table.Th>
+                <Table.Th>Tür</Table.Th>
+                <Table.Th>Departman</Table.Th>
+                <Table.Th>Durum</Table.Th>
+                <Table.Th>Tarih</Table.Th>
+                <Table.Th align="right">Aksiyon</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {filteredDocuments.map(doc => (
-                <Table.Tr key={doc.id}>
-                  <Table.Td>{doc.doc_code}</Table.Td>
-                  <Table.Td>{doc.doc_name}</Table.Td>
-                  <Table.Td>{doc.doc_type}</Table.Td>
-                  <Table.Td style={{ textAlign: 'right' }}>
-                    {/* 3. GÜNCELLEME: Butonu tema rengimizle vurguluyoruz */}
-                    <Button 
-                      component={Link} 
-                      to={`/doc/${doc.id}`} 
-                      variant="filled" // veya sadece 'variant'ı kaldırın
-                      size="xs"
-                    >
-                      Görüntüle
-                    </Button>
-                  </Table.Td>
-                </Table.Tr>
-              ))}
+              {filteredDocuments.map((d) => {
+                const createdAt = toJsDate(d.created_at);
+                return (
+                  <Table.Tr key={d.id}>
+                    <Table.Td>{d.code}</Table.Td>
+                    <Table.Td>{d.title}</Table.Td>
+                    <Table.Td>{d.type}</Table.Td>
+                    <Table.Td>{d.owner_department || "-"}</Table.Td>
+                    <Table.Td>
+                      <Badge
+                        size="sm"
+                        variant="light"
+                        color={statusColor(d.status)}
+                      >
+                        {statusTR(d.status)}
+                      </Badge>
+                    </Table.Td>
+                    <Table.Td>
+                      {createdAt
+                        ? createdAt.toLocaleDateString("tr-TR")
+                        : "-"}
+                    </Table.Td>
+                    <Table.Td align="right">
+                      <Button
+                        component={Link}
+                        to={`/doc/${d.id}`}
+                        size="xs"
+                      >
+                        Görüntüle
+                      </Button>
+                    </Table.Td>
+                  </Table.Tr>
+                );
+              })}
             </Table.Tbody>
           </Table>
         )}

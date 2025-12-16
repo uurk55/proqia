@@ -1,8 +1,6 @@
 // src/pages/dashboard/Dashboard.tsx
 
-import { useEffect, useState } from "react";
-import type { ReactNode } from "react";
-
+import { useEffect, useState, type ReactNode } from "react";
 import {
   collection,
   getDocs,
@@ -27,6 +25,9 @@ import {
   Table,
   Button,
   Alert,
+  Switch,
+  List,
+  ThemeIcon,
 } from "@mantine/core";
 import {
   IconFileAlert,
@@ -35,6 +36,7 @@ import {
   IconCalendarTime,
   IconListCheck,
   IconAlertCircle,
+  IconFileDescription,
 } from "@tabler/icons-react";
 import { useNavigate } from "react-router-dom";
 
@@ -45,6 +47,7 @@ type SummaryCounts = {
   openComplaints: number;
   openRisks: number;
   upcomingTrainings: number;
+  pendingDocs: number; // Onay bekleyen doküman sayısı
 };
 
 type TaskItem = {
@@ -58,8 +61,60 @@ type TaskItem = {
 
 const toJsDate = (value?: Timestamp | Date | null): Date | undefined => {
   if (!value) return undefined;
-  // @ts-expect-error: runtime'da Timestamp olabilir
-  return typeof value.toDate === "function" ? value.toDate() : value;
+  
+  return typeof (value as any).toDate === "function"
+    ? (value as any).toDate()
+    : (value as Date);
+};
+
+// Due-date yardımcıları
+const isTaskOverdue = (due?: Timestamp | Date | null): boolean => {
+  const d = toJsDate(due);
+  if (!d) return false;
+  const now = new Date();
+  const dMid = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const nowMid = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return dMid.getTime() < nowMid.getTime();
+};
+
+const getDueInfo = (due?: Timestamp | Date | null): string | null => {
+  const d = toJsDate(due);
+  if (!d) return null;
+  const now = new Date();
+  const dMid = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const nowMid = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  const diffMs = dMid.getTime() - nowMid.getTime();
+  const diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 0) return `${Math.abs(diffDays)} gün gecikti`;
+  if (diffDays === 0) return "Termin bugün";
+  if (diffDays === 1) return "1 gün kaldı";
+  if (diffDays > 1 && diffDays <= 7) return `${diffDays} gün kaldı`;
+  return null;
+};
+
+// Modül ikon / label helper
+const getModuleInfo = (module?: string) => {
+  const m = (module || "").toLowerCase();
+
+  if (m === "dof" || m === "corrective_action") {
+    return { label: "DÖF", icon: <IconFileAlert size={16} /> };
+  }
+  if (m === "complaint") {
+    return { label: "Şikayet", icon: <IconMessageCircle size={16} /> };
+  }
+  if (m === "risk") {
+    return { label: "Risk", icon: <IconAlertTriangle size={16} /> };
+  }
+  if (m === "training") {
+    return { label: "Eğitim", icon: <IconCalendarTime size={16} /> };
+  }
+  if (m === "incident" || m === "isg") {
+    return { label: "İSG / Olay", icon: <IconAlertTriangle size={16} /> };
+  }
+
+  return { label: module || "Genel", icon: <IconListCheck size={16} /> };
 };
 
 // ------- Küçük özet kart bileşeni -------
@@ -72,19 +127,38 @@ type SummaryCardProps = {
   onClick?: () => void;
 };
 
-function SummaryCard({ label, value, icon, description, onClick }: SummaryCardProps) {
-  const clickable = !!onClick;
+function SummaryCard({
+  label,
+  value,
+  icon,
+  description,
+  onClick,
+}: SummaryCardProps) {
+  const clickable = Boolean(onClick);
 
   return (
     <Paper
       withBorder
       radius="md"
       p="md"
-      shadow={clickable ? "sm" : "xs"}
+      shadow="xs"
       onClick={onClick}
       style={{
         cursor: clickable ? "pointer" : "default",
-        transition: "transform 120ms ease, box-shadow 120ms ease",
+        transition: clickable
+          ? "transform 120ms ease, box-shadow 120ms ease"
+          : undefined,
+      }}
+      onMouseEnter={(e) => {
+        if (!clickable) return;
+        (e.currentTarget as HTMLDivElement).style.transform = "translateY(-2px)";
+        (e.currentTarget as HTMLDivElement).style.boxShadow =
+          "0 4px 12px rgba(0,0,0,0.08)";
+      }}
+      onMouseLeave={(e) => {
+        if (!clickable) return;
+        (e.currentTarget as HTMLDivElement).style.transform = "none";
+        (e.currentTarget as HTMLDivElement).style.boxShadow = "";
       }}
     >
       <Group justify="space-between" align="flex-start">
@@ -115,7 +189,7 @@ function SummaryCard({ label, value, icon, description, onClick }: SummaryCardPr
 // ------- Ana Dashboard bileşeni -------
 
 function Dashboard() {
-  const { proqiaUser, currentUser } = useAuth();
+  const { proqiaUser, currentUser, permissions } = useAuth();
   const navigate = useNavigate();
 
   const [summary, setSummary] = useState<SummaryCounts>({
@@ -123,6 +197,7 @@ function Dashboard() {
     openComplaints: 0,
     openRisks: 0,
     upcomingTrainings: 0,
+    pendingDocs: 0,
   });
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [summaryError, setSummaryError] = useState("");
@@ -130,6 +205,8 @@ function Dashboard() {
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [tasksLoading, setTasksLoading] = useState(true);
   const [tasksError, setTasksError] = useState("");
+
+  const [showOnlyOverdue, setShowOnlyOverdue] = useState(false);
 
   // -------- Özet kartlar için verileri çek --------
 
@@ -144,6 +221,7 @@ function Dashboard() {
       setSummaryError("");
 
       try {
+        // Açık DÖF sayısı
         const dofSnap = await getDocs(
           query(
             collection(db, "corrective_actions"),
@@ -152,6 +230,7 @@ function Dashboard() {
           )
         );
 
+        // Açık şikayet sayısı
         const complaintSnap = await getDocs(
           query(
             collection(db, "complaints"),
@@ -160,6 +239,7 @@ function Dashboard() {
           )
         );
 
+        // Açık / izlemede risk sayısı
         const riskSnap = await getDocs(
           query(
             collection(db, "risks"),
@@ -167,10 +247,12 @@ function Dashboard() {
           )
         );
         const openRisks = riskSnap.docs.filter((doc) => {
-          const s = (doc.data() as any).status;
+          const d = doc.data() as { status?: string };
+          const s = d.status;
           return s === "Açık" || s === "İzlemede";
         }).length;
 
+        // Yaklaşan eğitimler (önümüzdeki 7 gün, status = Planlandı)
         const trainingsSnap = await getDocs(
           query(
             collection(db, "trainings"),
@@ -182,18 +264,28 @@ function Dashboard() {
         in7.setDate(in7.getDate() + 7);
 
         const upcomingTrainings = trainingsSnap.docs.filter((doc) => {
-          const data = doc.data() as any;
+          const data = doc.data() as { status?: string; date?: Timestamp };
           if (data.status !== "Planlandı") return false;
           const dateVal = toJsDate(data.date);
           if (!dateVal) return false;
           return dateVal >= now && dateVal <= in7;
         }).length;
 
+        // Onay bekleyen doküman sayısı (status = "pending")
+        const docsSnap = await getDocs(
+          query(
+            collection(db, "documents"),
+            where("company_id", "==", proqiaUser.company_id),
+            where("status", "==", "pending")
+          )
+        );
+
         setSummary({
           openDof: dofSnap.size,
           openComplaints: complaintSnap.size,
           openRisks,
           upcomingTrainings,
+          pendingDocs: docsSnap.size,
         });
       } catch (err) {
         console.error("Dashboard özet verileri alınamadı:", err);
@@ -230,7 +322,16 @@ function Dashboard() {
         );
 
         const rawTasks: TaskItem[] = snap.docs.map((doc) => {
-          const data = doc.data() as any;
+          const data = doc.data() as {
+            title?: string;
+            module?: string;
+            type?: string;
+            status?: string;
+            ref_id?: string;
+            target_id?: string;
+            due_date?: Timestamp | Date | null;
+          };
+
           return {
             id: doc.id,
             title: data.title ?? "Görev",
@@ -241,11 +342,19 @@ function Dashboard() {
           };
         });
 
-        const openStatuses = ["open", "Open", "Açık", "Beklemede", "Devam ediyor"];
+        // Sadece açık / bekleyen görevleri göster
+        const openStatuses = [
+          "open",
+          "Open",
+          "Açık",
+          "Beklemede",
+          "Devam ediyor",
+        ];
         const filtered = rawTasks.filter((t) =>
           t.status ? openStatuses.includes(t.status) : true
         );
 
+        // Tarihe göre sırala (yakın termin en üstte)
         filtered.sort((a, b) => {
           const da = toJsDate(a.due_date)?.getTime() ?? Infinity;
           const dbt = toJsDate(b.due_date)?.getTime() ?? Infinity;
@@ -268,14 +377,60 @@ function Dashboard() {
 
   const getTaskLink = (task: TaskItem): string | null => {
     if (task.module === "dof" && task.ref_id) return `/dof/${task.ref_id}`;
-    if (task.module === "complaint" && task.ref_id) return `/complaint/${task.ref_id}`;
+    if (task.module === "complaint" && task.ref_id)
+      return `/complaint/${task.ref_id}`;
     if (task.module === "risk" && task.ref_id) return `/risk/${task.ref_id}`;
-    if (task.module === "training" && task.ref_id) return `/training/${task.ref_id}`;
-    if (task.module === "incident" && task.ref_id) return `/incident/${task.ref_id}`;
+    if (task.module === "training" && task.ref_id)
+      return `/training/${task.ref_id}`;
+    if (task.module === "incident" && task.ref_id)
+      return `/incident/${task.ref_id}`;
+
     return null;
   };
 
-  // -------- Ekran --------
+  // Filtrelenmiş görevler (sadece gecikenleri göster opsiyonu)
+  const visibleTasks = showOnlyOverdue
+    ? tasks.filter((t) => isTaskOverdue(t.due_date))
+    : tasks;
+
+  // Küçük görev özet hesapları
+  const totalTasks = tasks.length;
+  const overdueTasks = tasks.filter((t) => isTaskOverdue(t.due_date)).length;
+  const dueIn7 = tasks.filter((t) => {
+    const info = getDueInfo(t.due_date);
+    return info !== null && info.includes("kaldı");
+  }).length;
+
+  // -------- Rol bazlı hoş geldin bloğu için textler --------
+
+  let roleTitle = "Kullanıcı";
+  const tips: string[] = [];
+
+  if (proqiaUser?.role_id === "admin") {
+    roleTitle = "Şirket Admini";
+    tips.push(
+      "Şirketiniz için departman ve lokasyonları tanımlayın (Admin → Şirket Ayarları).",
+      "Rolleri ve iş akışlarını gözden geçirip, doğru kişilere doğru yetkileri verin.",
+      "İlk DÖF / şikayet / risk kayıtlarını oluşturup sistemi canlıda test edin.",
+      "Kullanıcılar menüsünden yeni kullanıcılar ekleyip rollerini atayın."
+    );
+  } else {
+    roleTitle = "ProQIA Kullanıcısı";
+    tips.push(
+      "Dashboard'daki 'Bekleyen Görevlerim' listesini kontrol edin ve geciken işlerden başlayın.",
+      "Karşılaştığınız uygunsuzluklar için hızlıca DÖF veya şikayet kaydı açın.",
+      "İSG olaylarını ve ramak kalaları anında sisteme girerek izlenebilir hale getirin.",
+      "Sorumlu olduğunuz KPI ve eğitim kayıtlarını düzenli aralıklarla güncelleyin."
+    );
+  }
+
+  // 🔹 Sadece onaylayıcı kullanıcılar için doküman kartı
+  const canApproveDocs =
+    permissions?.doc_approve_list ||
+    permissions?.doc_approve ||
+    permissions?.doc_approval;
+
+  // -------- Ekranlar --------
 
   if (!proqiaUser) {
     return (
@@ -287,7 +442,42 @@ function Dashboard() {
 
   return (
     <Box>
-      {/* ÜST ÖZET KARTLAR */}
+      {/* ROL BAZLI HOŞ GELDİN BLOĞU */}
+      <Paper withBorder radius="md" p="md" mb="md" shadow="xs">
+        <Group justify="space-between" align="flex-start">
+          <Stack gap={4}>
+            <Title order={2}>
+              Hoş geldin, {proqiaUser.full_name || "Kullanıcı"} 👋
+            </Title>
+            <Text fz="sm" c="dimmed">
+              Rolün: <Text span fw={500}>{roleTitle}</Text>.{" "}
+              Bugün ProQIA'da odaklanabileceğin birkaç öneri:
+            </Text>
+          </Stack>
+          <Badge variant="light" color="blue">
+            {roleTitle}
+          </Badge>
+        </Group>
+
+        {tips.length > 0 && (
+          <List
+            mt="sm"
+            spacing="xs"
+            size="sm"
+            icon={
+              <ThemeIcon size={18} radius="xl" variant="light">
+                <IconListCheck size={14} />
+              </ThemeIcon>
+            }
+          >
+            {tips.map((tip) => (
+              <List.Item key={tip}>{tip}</List.Item>
+            ))}
+          </List>
+        )}
+      </Paper>
+
+      {/* ÜST ÖZET KARTLAR (TIKLANABİLİR) */}
       {summaryLoading ? (
         <Center style={{ padding: 24 }}>
           <Loader size="md" />
@@ -331,20 +521,50 @@ function Dashboard() {
             icon={<IconCalendarTime size={22} />}
             onClick={() => navigate("/trainings")}
           />
+
+          {canApproveDocs && (
+            <SummaryCard
+              label="Onay Bekleyen Doküman"
+              value={summary.pendingDocs}
+              description="Onay bekleyen doküman sayısı"
+              icon={<IconFileDescription size={22} />}
+              onClick={() => navigate("/documents/approval")}
+            />
+          )}
         </SimpleGrid>
       )}
 
       {/* BEKLEYEN GÖREVLERİM */}
       <Paper withBorder shadow="sm" radius="md" p="md" mt="md">
-        <Group justify="space-between" mb="sm">
+        <Group justify="space-between" mb="xs" align="center">
           <Group gap={8}>
             <IconListCheck size={20} />
             <Title order={3}>Bekleyen Görevlerim</Title>
           </Group>
-          <Text fz="sm" c="dimmed">
-            {tasks.length} adet bekleyen göreviniz var.
-          </Text>
+          <Group gap="md">
+            <Switch
+              size="sm"
+              checked={showOnlyOverdue}
+              onChange={(e) => setShowOnlyOverdue(e.currentTarget.checked)}
+              label="Sadece gecikenleri göster"
+            />
+          </Group>
         </Group>
+
+        {/* Küçük görev özeti */}
+        <Text fz="xs" c="dimmed" mb="sm">
+          Toplam{" "}
+          <Text span fw={500}>
+            {totalTasks}
+          </Text>{" "}
+          görev •{" "}
+          <Text span fw={500} c={overdueTasks > 0 ? "red" : "dimmed"}>
+            {overdueTasks} gecikmiş
+          </Text>{" "}
+          •{" "}
+          <Text span fw={500}>{dueIn7} </Text>
+          önümüzdeki 7 gün içinde terminli
+        </Text>
 
         {tasksLoading ? (
           <Center style={{ padding: 24 }}>
@@ -358,9 +578,11 @@ function Dashboard() {
           >
             {tasksError}
           </Alert>
-        ) : tasks.length === 0 ? (
+        ) : visibleTasks.length === 0 ? (
           <Text ta="center" c="dimmed" py="xl">
-            Size atanmış bekleyen bir göreviniz bulunmuyor. Harika!
+            {showOnlyOverdue
+              ? "Geciken bekleyen göreviniz bulunmuyor. Güzel haber!"
+              : "Size atanmış bekleyen bir göreviniz bulunmuyor. Harika!"}
           </Text>
         ) : (
           <Table striped highlightOnHover verticalSpacing="sm" fz="sm">
@@ -374,18 +596,31 @@ function Dashboard() {
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {tasks.map((task) => {
+              {visibleTasks.map((task) => {
                 const dueDate = toJsDate(task.due_date);
                 const link = getTaskLink(task);
+                const overdue = isTaskOverdue(task.due_date);
+                const dueInfo = getDueInfo(task.due_date);
+                const moduleInfo = getModuleInfo(task.module);
 
                 return (
                   <Table.Tr
                     key={task.id}
-                    style={{ cursor: link ? "pointer" : "default" }}
+                    style={{
+                      cursor: link ? "pointer" : "default",
+                      backgroundColor: overdue
+                        ? "rgba(255, 0, 0, 0.03)"
+                        : undefined,
+                    }}
                     onClick={() => link && navigate(link)}
                   >
                     <Table.Td>{task.title}</Table.Td>
-                    <Table.Td>{task.module || "-"}</Table.Td>
+                    <Table.Td>
+                      <Group gap={6}>
+                        {moduleInfo.icon}
+                        <Text fz="xs">{moduleInfo.label}</Text>
+                      </Group>
+                    </Table.Td>
                     <Table.Td>
                       {task.status ? (
                         <Badge
@@ -403,7 +638,16 @@ function Dashboard() {
                       )}
                     </Table.Td>
                     <Table.Td>
-                      {dueDate ? dueDate.toLocaleDateString("tr-TR") : "-"}
+                      <Text fz="sm">
+                        {dueDate
+                          ? dueDate.toLocaleDateString("tr-TR")
+                          : "-"}
+                      </Text>
+                      {dueInfo && (
+                        <Text fz="xs" c={overdue ? "red" : "dimmed"}>
+                          {dueInfo}
+                        </Text>
+                      )}
                     </Table.Td>
                     <Table.Td
                       style={{ textAlign: "right" }}
